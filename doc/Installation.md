@@ -93,7 +93,7 @@ WikiOracle includes a local Flask server (`bin/wikioracle.py`) that enables chat
 | `bin/truth.py` | Trust processing, authority resolution, operator engine (and/or/not) |
 | `test/test_*.py` | Automated tests for state, stateless contract, prompt bundles, authority, derived truth |
 | `html/index.html` | Single-page web UI shell with chat, settings, and merge tools |
-| `llm.jsonl` | Client-owned state file (line-delimited JSON). See `spec/llm_state_v2.json` for the formal schema |
+| `llm.jsonl` | Client-owned state file (line-delimited JSON). See `data/llm_state_v2.json` for the formal schema |
 
 ### Quickstart
 

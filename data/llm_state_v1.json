@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://raw.githubusercontent.com/arborrhythms/WikiOracle/main/spec/llm_state_v1.json",
+  "$id": "https://raw.githubusercontent.com/arborrhythms/WikiOracle/main/data/llm_state_v1.json",
   "title": "WikiOracle LLM State (JSONL)",
   "description": "Client-owned state file for WikiOracle conversations, truth entries, and directory context. Uses line-delimited JSON (JSONL): line 1 is a header object, subsequent lines are message or trust records. The server is stateless; this file is the canonical source of persistence.",
   "type": "object",
@@ -15,7 +15,7 @@
       "type": "string",
       "format": "uri",
       "description": "URL to the canonical JSON Schema file on GitHub. Treated as an identifier; clients do not need to fetch it.",
-      "examples": ["https://raw.githubusercontent.com/arborrhythms/WikiOracle/main/spec/llm_state_v1.json"]
+      "examples": ["https://raw.githubusercontent.com/arborrhythms/WikiOracle/main/data/llm_state_v1.json"]
     },
     "date": {
       "type": "string",

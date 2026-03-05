@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Alpha state file tests.
 
-Copies spec/alpha.jsonl to the project root (alpha.jsonl) and verifies:
+Copies data/alpha.jsonl to the project root (alpha.jsonl) and verifies:
   - Round-trip integrity (load → serialize → reload)
   - Correct structure: 2 facts + 1 feeling + 2 providers
   - Provider entries are valid and sorted by trust (descending)
@@ -31,25 +31,25 @@ from truth import (
     parse_provider_block,
 )
 
-# Working copies live in output/; spec/ originals are never modified.
-_SPEC_DIR = _project / "spec"
+# Working copies live in output/; data/ originals are never modified.
+_DATA_DIR = _project / "data"
 _OUTPUT_DIR = _project / "output"
-_ALPHA_SRC = _SPEC_DIR / "alpha.jsonl"
+_ALPHA_SRC = _DATA_DIR / "alpha.jsonl"
 _ALPHA_COPY = _OUTPUT_DIR / "alpha.jsonl"
 _BETA_NAMES = ("beta1", "beta2")
 
 
 def _ensure_vote_copies() -> Path:
-    """Copy spec/{alpha,beta1,beta2}.jsonl → output/ (overwrite each)."""
+    """Copy data/{alpha,beta1,beta2}.jsonl → output/ (overwrite each)."""
     _OUTPUT_DIR.mkdir(exist_ok=True)
     shutil.copy2(_ALPHA_SRC, _ALPHA_COPY)
     for name in _BETA_NAMES:
-        shutil.copy2(_SPEC_DIR / f"{name}.jsonl", _OUTPUT_DIR / f"{name}.jsonl")
+        shutil.copy2(_DATA_DIR / f"{name}.jsonl", _OUTPUT_DIR / f"{name}.jsonl")
     return _ALPHA_COPY
 
 
 class TestAlphaStateLoad(unittest.TestCase):
-    """Verify spec/alpha.jsonl loads correctly from a root-level copy."""
+    """Verify data/alpha.jsonl loads correctly from a root-level copy."""
 
     @classmethod
     def setUpClass(cls):
@@ -138,9 +138,9 @@ class TestAlphaProviders(unittest.TestCase):
             self.assertIn("beta", config["authority_url"])
 
     def test_beta_state_files_exist(self):
-        """spec/beta1.jsonl and spec/beta2.jsonl should exist and be loadable."""
+        """data/beta1.jsonl and data/beta2.jsonl should exist and be loadable."""
         for name in ("beta1", "beta2"):
-            path = _project / "spec" / f"{name}.jsonl"
+            path = _project / "data" / f"{name}.jsonl"
             self.assertTrue(path.exists(), f"Missing {path}")
             state = load_state_file(path, strict=True)
             self.assertGreaterEqual(len(state.get("truth", [])), 2,
@@ -199,7 +199,7 @@ class TestAlphaRoundTrip(unittest.TestCase):
         self.assertIn("voting", restored.get("context", "").lower())
 
     def test_copy_matches_spec(self):
-        """The root alpha.jsonl should match spec/alpha.jsonl."""
+        """The root alpha.jsonl should match data/alpha.jsonl."""
         spec_state = load_state_file(_ALPHA_SRC, strict=True)
         spec_ids = {e["id"] for e in spec_state["truth"]}
         orig_ids = {e["id"] for e in self.original["truth"]}

@@ -26,7 +26,7 @@ from truth import (
 )
 
 
-SPEC_DIR = Path(__file__).resolve().parent.parent / "spec"
+SPEC_DIR = Path(__file__).resolve().parent.parent / "data"
 
 
 # ---------------------------------------------------------------------------
@@ -355,12 +355,12 @@ class TestPerProviderTruth(unittest.TestCase):
         """parse_provider_block extracts authority_url from nested <authority> element."""
         content = (
             '<provider api_url="http://test" model="m">'
-            '<authority url="file://spec/beta_truth.jsonl"/>'
+            '<authority url="file://data/beta_truth.jsonl"/>'
             '</provider>'
         )
         result = parse_provider_block(content)
         self.assertIsNotNone(result)
-        self.assertEqual(result["authority_url"], "file://spec/beta_truth.jsonl")
+        self.assertEqual(result["authority_url"], "file://data/beta_truth.jsonl")
 
     def test_authority_url_empty_when_absent(self):
         """parse_provider_block returns empty authority_url when not present."""

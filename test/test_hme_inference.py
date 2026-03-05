@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """HME logical inference tests.
 
-Loads spec/hme.jsonl and verifies that the query pipeline produces
+Loads data/hme.jsonl and verifies that the query pipeline produces
 correct source selection and that a (mocked) LLM response can be validated
 against expected trust bounds.
 
@@ -40,8 +40,8 @@ from response import (
 
 
 def _load_hme_state() -> dict:
-    """Load spec/hme.jsonl into a v2 state dict."""
-    hme_path = _project / "spec" / "hme.jsonl"
+    """Load data/hme.jsonl into a v2 state dict."""
+    hme_path = _project / "data" / "hme.jsonl"
     return load_state_file(hme_path, strict=True)
 
 

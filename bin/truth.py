@@ -926,3 +926,210 @@ def compute_derived_truth(trust_entries: list) -> dict:
             break
 
     return trust_map
+
+
+# ---------------------------------------------------------------------------
+# User GUID — deterministic pseudonymous identity from user.name
+# ---------------------------------------------------------------------------
+def user_guid(user_name: str, uid: str | None = None) -> str:
+    """Return a user GUID, preferring an explicit *uid* from config.
+
+    When *uid* is provided (non-empty string), it is returned as-is —
+    this is the preferred path (``user.uid`` in config.yaml).
+
+    When *uid* is ``None`` or empty, falls back to a deterministic
+    UUID-5 derived from *user_name* in the WikiOracle namespace.
+    """
+    if uid:
+        return uid
+    return str(uuid.uuid5(WIKIORACLE_UUID_NS, user_name))
+
+
+# ---------------------------------------------------------------------------
+# Server truth table — persistence and merging
+# ---------------------------------------------------------------------------
+# Tags that are stored in the server truth table.
+# Feelings and providers are excluded — only factual content is retained.
+_SERVER_TRUTH_TAGS = frozenset({"fact", "reference", "authority", "and", "or", "not", "non"})
+
+
+def _is_server_storable(entry: dict) -> bool:
+    """Return True if the entry should be stored in the server truth table."""
+    content = entry.get("content", "")
+    if "<feeling" in content:
+        return False
+    if "<provider" in content:
+        return False
+    return True
+
+
+def load_server_truth(path: str | Path) -> list:
+    """Load the server truth table from a JSONL file.
+
+    Each line is a JSON truth entry.  Returns a list of normalized entries.
+    If the file does not exist, returns an empty list.
+    """
+    path = Path(path) if not isinstance(path, Path) else path
+    if not path.exists():
+        return []
+    entries = []
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                raw = json.loads(line)
+                entries.append(_normalize_trust_entry(raw))
+            except (json.JSONDecodeError, KeyError):
+                continue
+    return entries
+
+
+def save_server_truth(path: str | Path, entries: list) -> None:
+    """Atomically write the server truth table to a JSONL file."""
+    path = Path(path) if not isinstance(path, Path) else path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        for entry in entries:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    tmp.replace(path)
+
+
+def merge_client_truth(
+    server_truth: list,
+    client_truth: list,
+    merge_rate: float = 0.1,
+    author: str = "unknown",
+) -> list:
+    """Merge a client's truth entries into the server truth table.
+
+    - Match found (by ID): nudge server trust toward client trust using
+      a slow-moving average: server += merge_rate × (client − server)
+    - No match: insert the entry with the client's trust and author GUID.
+    - Feelings and providers are skipped.
+
+    Returns the updated server truth list.
+    """
+    by_id = {e["id"]: e for e in server_truth}
+
+    for entry in client_truth:
+        if not _is_server_storable(entry):
+            continue
+        eid = entry.get("id", "")
+        if not eid:
+            continue
+
+        if eid in by_id:
+            # Existing entry: slow-moving average
+            existing = by_id[eid]
+            old_trust = existing.get("trust", 0.0)
+            new_trust = entry.get("trust", 0.0)
+            existing["trust"] = old_trust + merge_rate * (new_trust - old_trust)
+            existing["trust"] = min(1.0, max(-1.0, existing["trust"]))
+        else:
+            # New entry: insert with author
+            new_entry = _normalize_trust_entry(entry)
+            new_entry["author"] = author
+            server_truth.append(new_entry)
+            by_id[eid] = new_entry
+
+    return server_truth
+
+
+# ---------------------------------------------------------------------------
+# DegreeOfTruth — how well does the client truth match the server truth?
+# ---------------------------------------------------------------------------
+def compute_degree_of_truth(server_truth: list, client_truth: list) -> float:
+    """Compute the DegreeOfTruth (DoT) for a client's truth table.
+
+    Range: **-1 .. +1**
+
+        +1  = full agreement   (client and server trust values match)
+        0   = no shared context (nothing to learn — skip training)
+        -1  = full disagreement (client contradicts server)
+
+    For each entry ID shared between server and client::
+
+        agreement_i = 1 − |server_trust_i − client_trust_i| / 2   # 0..1
+
+    The raw mean agreement lives in [0, 1].  We rescale to [-1, +1] via
+    ``dot = 2 * mean_agreement − 1`` so that *direction* is preserved.
+
+    When no entries are shared, returns 0.0 (no information — the model
+    has nothing to learn from this exchange and /train is skipped).
+
+    Note on pluralistic truth
+    -------------------------
+    A DoT of 0 represents epistemic neutrality: neither confirmed nor
+    refuted.  In a *consensus* truth model this is a dead zone.  In a
+    future *pluralistic* model, the same fact can be true under context
+    c1 and false under c2.  Moving from consensus to pluralistic truth
+    will require user feedback to disambiguate context — e.g. "true for
+    whom?" — so that the truth table can index entries by perspective.
+    Until that is implemented, a DoT near 0 may signal that more context
+    (and therefore user feedback) is needed before training should occur.
+    """
+    # TODO: Operator Propagation
+    # Currently we compare raw trust values.  Before building server_by_id,
+    # we should run compute_derived_truth(server_truth) so that logical
+    # operators (and/or/not/non) propagate derived certainty into the
+    # entries they govern.  The same should be done for client_truth.
+    # This would let DoT reflect the *derived* agreement, not just the
+    # raw stored values.  Deferred until the operator engine is stable
+    # enough to run on every /chat request without measurable latency.
+    server_by_id = {e["id"]: e.get("trust", 0.0) for e in server_truth}
+
+    agreements = []
+    for entry in client_truth:
+        eid = entry.get("id", "")
+        if eid in server_by_id:
+            s_trust = server_by_id[eid]
+            c_trust = entry.get("trust", 0.0)
+            agreement = 1.0 - abs(s_trust - c_trust) / 2.0
+            agreements.append(agreement)
+
+    if not agreements:
+        return 0.0  # no shared entries — nothing to learn
+
+    mean_agreement = sum(agreements) / len(agreements)
+    # Rescale from [0, 1] agreement to [-1, +1] DoT
+    return 2.0 * mean_agreement - 1.0
+
+
+# ---------------------------------------------------------------------------
+# Dissonance detection (TODO) — consensus → pluralistic truth
+# ---------------------------------------------------------------------------
+# The truth table currently stores a single trust value per entry: a
+# *consensus* model where each fact is either true (+1), false (-1), or
+# somewhere in between.  This is sufficient for many use cases, but breaks
+# down when the same claim is true in one context and false in another
+# (e.g. "the world was created in seven days" vs. "over millions of years"
+# — both can be true when indexed by the perspective they originate from).
+#
+# Moving from consensus to *pluralistic* truth requires:
+#   1. User feedback to disambiguate context when DoT ≈ 0.  A DoT near
+#      zero signals that the truth table has no opinion — the system
+#      should ask "true for whom?" before committing a training step.
+#   2. Context tags on entries (explicit perspective / worldview labels)
+#      so that the same entry ID can carry different trust values under
+#      different contexts.
+#   3. A truth-space representation that is indexed by (entry_id, context)
+#      rather than entry_id alone.
+#
+# Possible approaches:
+#   - Perspective tags on entries (explicit frame membership)
+#   - Truth-space embeddings with frame clustering
+#   - Conditional trust values indexed by worldview vector
+#
+# Until this is implemented, contradictions are not detected and
+# conflicting entries coexist at their stated trust values.  The DoT
+# range (-1..+1) already encodes direction (agree/disagree), laying the
+# groundwork for context-aware truth once user feedback is integrated.
+def detect_dissonance(entries: list) -> list:
+    """Placeholder: detect contradictions in the truth table.
+
+    Returns an empty list.  See TODO above for future plans.
+    """
+    return []

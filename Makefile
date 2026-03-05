@@ -13,6 +13,11 @@ SHIM_VENV        := .venv
 SHIM_ACTIVATE    := source "$(CURDIR)/$(SHIM_VENV)/bin/activate"
 NANOCHAT_BASE    := $(CURDIR)/$(NANOCHAT_DIR)
 IDENTITY_DATA    := $(NANOCHAT_BASE)/identity_conversations.jsonl
+
+# Checkpoint backup (for rollback before/after online training)
+CHECKPOINT_BAK   := data/checkpoints
+WO_NANOCHAT      ?= /opt/bitnami/wordpress/files/wikiOracle.org/nanochat
+WO_CHECKPOINT    := $(WO_NANOCHAT)/chatsft_checkpoints
 IDENTITY_URL     := https://karpathy-public.s3.us-west-2.amazonaws.com/identity_conversations.jsonl
 
 # GPU training defaults (override on command line, e.g. make NPROC=4 pretrain-gpu)
@@ -77,7 +82,9 @@ VOTE_Q           ?= Lets have a vote on taxes. Should we raise them?
         remote remote-retrieve remote-ssh remote-status remote-logs \
         remote-deploy remote-deploy-launch \
         wo-start wo-stop wo-restart wo-status wo-logs \
-        wo-chat-deploy wo-chat-start wo-chat-stop wo-chat-restart wo-chat-status wo-chat-logs
+        wo-chat-deploy wo-chat-start wo-chat-stop wo-chat-restart wo-chat-status wo-chat-logs \
+        checkpoint-pull checkpoint-push \
+        preprocess
 
 # --- Help ---------------------------------------------------------------------
 
@@ -145,6 +152,10 @@ help:
 	@echo "  make wo-chat-restart       Restart chat shim on WikiOracle"
 	@echo "  make wo-chat-status        Check chat shim status on WikiOracle"
 	@echo "  make wo-chat-logs          Tail chat shim logs on WikiOracle"
+	@echo ""
+	@echo "Checkpoint Backup (WikiOracle ↔ local):"
+	@echo "  make checkpoint-pull    Pull SFT weights from WikiOracle → data/checkpoints/"
+	@echo "  make checkpoint-push    Push data/checkpoints/ → WikiOracle SFT weights"
 	@echo ""
 	@echo "Cleanup:"
 	@echo "  make clean              Remove Python caches"
@@ -264,9 +275,9 @@ wo-chat-deploy:
 	@echo "Deploying WikiOracle chat shim to $(WO_HOST):$(WO_CHAT_DEST) ..."
 	rsync -avz --delete --exclude .venv \
 		-e "ssh -i $(WO_KEY_FILE) -o ConnectTimeout=10" \
-		--files-from=<(git ls-files -- bin html spec requirements.txt; echo $(WO_CHAT_EXTRA)) \
+		--files-from=<(git ls-files -- bin html data requirements.txt; echo $(WO_CHAT_EXTRA)) \
 		. $(WO_USER)@$(WO_HOST):$(WO_CHAT_DEST)/
-	$(WO_SSH) "sudo cp $(WO_CHAT_DEST)/spec/wikioracle-chat.service /etc/systemd/system/ && sudo systemctl daemon-reload"
+	$(WO_SSH) "sudo cp $(WO_CHAT_DEST)/data/wikioracle-chat.service /etc/systemd/system/ && sudo systemctl daemon-reload"
 	@echo "Chat shim deployed. Run 'make wo-chat-restart' to apply."
 
 wo-chat-start:
@@ -419,18 +430,22 @@ debug:
 	$(SHIM_ACTIVATE) && python3 $(WIKIORACLE_APP) --debug
 
 test:
-	$(SHIM_ACTIVATE) && python3 -m unittest test.test_wikioracle_state test.test_prompt_bundle test.test_derived_truth test.test_authority test.test_stateless_contract test.test_hme_inference test.test_voting test.test_alpha_state -v
+	$(SHIM_ACTIVATE) && python3 -m unittest test.test_wikioracle_state test.test_prompt_bundle test.test_derived_truth test.test_authority test.test_stateless_contract test.test_hme_inference test.test_voting test.test_alpha_state test.test_degree_of_truth test.test_user_guid test.test_sensation -v
 	@echo ""
 	@echo "── online LLM tests (warnings only) ──"
 	@$(SHIM_ACTIVATE) && python3 -m unittest test.test_online_llm -v 2>&1 || echo "⚠  online LLM tests had failures (non-blocking)"
+	@echo ""
+	@echo "── online training tests (warnings only) ──"
+	@$(ACTIVATE) && PYTHONPATH="$(NANOCHAT_BASE):$(CURDIR)/bin" NANOCHAT_BASE_DIR="$(NANOCHAT_BASE)" \
+		python3 -m unittest test.test_online_training -v 2>&1 || echo "⚠  online training tests had failures (non-blocking)"
 
 vote:
 	@mkdir -p output
-	cp spec/alpha.jsonl output/alpha.jsonl
-	cp spec/beta1.jsonl output/beta1.jsonl
-	cp spec/beta2.jsonl output/beta2.jsonl
+	cp data/alpha.jsonl output/alpha.jsonl
+	cp data/beta1.jsonl output/beta1.jsonl
+	cp data/beta2.jsonl output/beta2.jsonl
 	@# Rewrite authority paths so alpha references the output/ copies
-	sed -i '' 's|file://spec/|file://output/|g' output/alpha.jsonl
+	sed -i '' 's|file://data/|file://output/|g' output/alpha.jsonl
 	@echo "Starting vote server (alpha.yaml) …"
 	@$(SHIM_ACTIVATE) && python3 $(WIKIORACLE_APP) --config alpha.yaml &  \
 		SERVER_PID=$$!;                                                     \
@@ -457,7 +472,7 @@ run-cli:
 run-web:
 	cd $(NANOCHAT_DIR) && $(ACTIVATE) && \
 		export NANOCHAT_BASE_DIR="$(NANOCHAT_BASE)" && \
-		python -m scripts.chat_web
+		python ../bin/start_nanochat.py
 
 # --- Report -------------------------------------------------------------------
 
@@ -465,6 +480,35 @@ report:
 	cd $(NANOCHAT_DIR) && $(ACTIVATE) && \
 		export NANOCHAT_BASE_DIR="$(NANOCHAT_BASE)" && \
 		python -m nanochat.report generate
+
+# --- Checkpoint backup / restore -----------------------------------------------
+# Use checkpoint-pull before enabling online training to snapshot the current
+# SFT weights.  Use checkpoint-push to restore them if capture occurs.
+
+checkpoint-pull:
+	@echo "Pulling SFT checkpoints from $(WO_HOST) → $(CHECKPOINT_BAK)/ ..."
+	mkdir -p "$(CHECKPOINT_BAK)"
+	rsync -avz --delete \
+		-e "ssh -i $(WO_KEY_FILE) -o ConnectTimeout=10" \
+		"$(WO_USER)@$(WO_HOST):$(WO_CHECKPOINT)/" "$(CHECKPOINT_BAK)/"
+	@echo "Done. Backup at $(CHECKPOINT_BAK)/"
+
+checkpoint-push:
+	@test -d "$(CHECKPOINT_BAK)" || { echo "No backup at $(CHECKPOINT_BAK)/"; exit 1; }
+	@echo "Pushing $(CHECKPOINT_BAK)/ → $(WO_HOST) SFT checkpoints ..."
+	rsync -avz --delete \
+		-e "ssh -i $(WO_KEY_FILE) -o ConnectTimeout=10" \
+		"$(CHECKPOINT_BAK)/" "$(WO_USER)@$(WO_HOST):$(WO_CHECKPOINT)/"
+	@echo "Done. Run 'make wo-restart' to reload weights."
+
+# --- Sensation preprocessing --------------------------------------------------
+
+CORPUS_INPUT  ?= $(NANOCHAT_BASE)/identity_conversations.jsonl
+CORPUS_OUTPUT ?= data/tagged_corpus.jsonl
+
+preprocess:
+	@echo "Preprocessing $(CORPUS_INPUT) → $(CORPUS_OUTPUT) ..."
+	$(SHIM_ACTIVATE) && python3 bin/sensation.py corpus "$(CORPUS_INPUT)" "$(CORPUS_OUTPUT)"
 
 # --- Cleanup ------------------------------------------------------------------
 

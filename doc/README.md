@@ -1,5 +1,5 @@
 # WikiOracle Docs
-Updated: 2026-03-03
+Updated: 2026-03-05
 
 This directory is the design, governance, and research documentation for WikiOracle.
 
@@ -13,9 +13,10 @@ Recommended reading order:
 6. `Voting.md` (voting protocol: dom steering, sub fan-out, cycle prevention, truth-only output)
 7. `FreedomEmpathyTruth.md` (Freedom, Empathy, and Truth — safety principles)
 8. `Architecture.md` (current local-first software architecture)
-9. `Security.md` (concrete security considerations)
-10. `Installation.md` (build, deploy, and runtime instructions)
-11. `FutureWork.md` (roadmap)
+9. `Training.md` (DegreeOfTruth, Sensation preprocessing, online training pipeline, Hopfield dynamics)
+10. `Security.md` (concrete security considerations)
+11. `Installation.md` (build, deploy, and runtime instructions)
+12. `FutureWork.md` (roadmap)
 12. `WikiOracle.md` (consistency-first framing; document starts with "OpenMind")
 
 ## Core Documents (doc/)
@@ -31,6 +32,7 @@ Recommended reading order:
 - [`FreedomEmpathyTruth.md`](./FreedomEmpathyTruth.md): Freedom, Empathy, and Truth — safety principles and architectural commitments.
 - [`Security.md`](./Security.md): local-first security considerations (keys, CSP/XSS, CORS, filesystem, scraping/capture).
 - [`Architecture.md`](./Architecture.md): implementation architecture (Flask shim + UI + `llm.jsonl` state model).
+- [`Training.md`](./Training.md): DegreeOfTruth (−1..+1), Korzybski IS detection (Sensation preprocessing), online training pipeline, checkpoint backup/restore, Hopfield network dynamics.
 - [`Installation.md`](./Installation.md): build, deploy, and runtime instructions.
 - [`FutureWork.md`](./FutureWork.md): future directions (trust network, sentence-level prediction, conceptual-space operations).
 - [`WikiOracle.md`](./WikiOracle.md): a consistency-first design note (historically labeled "OpenMind" in the text).

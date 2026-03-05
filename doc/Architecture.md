@@ -18,8 +18,10 @@ Browser  ──HTTP──▸  wikioracle.py  ──HTTP──▸  Upstream LLM
 | Server | `bin/wikioracle.py` | Flask app — `/chat`, `/state`, `/merge`, `/config`, `/bootstrap` endpoints; reads/writes `llm.jsonl` |
 | Config | `bin/config.py` | Config dataclass, YAML loader, provider registry, schema-driven YAML writer, normalization |
 | State library | `bin/state.py` | Pure-Python tree operations, JSONL serialisation, legacy migration |
-| Response | `bin/response.py` | Chat pipeline, provider coordination, state I/O |
-| Truth | `bin/truth.py` | Trust processing, authority resolution, operator engine (and/or/not) |
+| Response | `bin/response.py` | Chat pipeline, provider coordination, state I/O, online training pipeline (Stages 2–4) |
+| Truth | `bin/truth.py` | Trust processing, authority resolution, operator engine (and/or/not), DegreeOfTruth |
+| Sensation | `bin/sensation.py` | Preprocessing: Korzybski IS detection, XML tagging (`<fact>`/`<feeling>`/`<Q>`/`<R>`), corpus conversion |
+| NanoChat ext | `bin/nanochat_ext.py` | `POST /train` route mounted onto NanoChat's FastAPI app for online SFT |
 | Client app | `html/wikioracle.js` | State management, API calls, message rendering, drag/context-menu interactions |
 | Client config | `html/config.js` | Config global, sessionStorage persistence, normalization, legacy migration |
 | Client state | `html/state.js` | State global, sessionStorage persistence |
@@ -27,8 +29,8 @@ Browser  ──HTTP──▸  wikioracle.py  ──HTTP──▸  Upstream LLM
 | Client query | `html/query.js` | Server communication layer, conversation tree helpers |
 | Tree renderer | `html/tree.js` | D3.js top-down hierarchy — layout, navigation, drag-to-merge |
 | Shell | `html/index.html` | Single-page app: layout, CSS, settings panel |
-| Spec | `spec/llm_state.json` | JSON Schema for the state format |
-| Tests | `test/test_*.py` | Tests covering state, stateless contract, prompt bundles, authority, derived truth |
+| Data | `data/llm_state.json` | JSON Schema for the state format |
+| Tests | `test/test_*.py` | Tests covering state, stateless contract, prompt bundles, authority, derived truth, DoT, sensation, online training |
 
 ## Data model
 

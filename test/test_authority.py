@@ -337,8 +337,8 @@ def test_resolve_authority_url_scheme_restriction():
 
 
 def test_hme_jsonl_authority_entry():
-    """Load spec/hme.jsonl and verify it contains an authority entry."""
-    hme_path = os.path.join(os.path.dirname(__file__), "..", "spec", "hme.jsonl")
+    """Load data/hme.jsonl and verify it contains an authority entry."""
+    hme_path = os.path.join(os.path.dirname(__file__), "..", "data", "hme.jsonl")
     if not os.path.exists(hme_path):
         return  # skip if file not present
 
@@ -368,8 +368,8 @@ def test_hme_jsonl_authority_entry():
 def test_hme_authority_resolution():
     """Resolve the test authority from hme.jsonl against the fragment file."""
     _AUTHORITY_CACHE.clear()
-    hme_path = os.path.join(os.path.dirname(__file__), "..", "spec", "hme.jsonl")
-    fragment_path = os.path.join(os.path.dirname(__file__), "..", "spec", "hme_authority_fragment.jsonl")
+    hme_path = os.path.join(os.path.dirname(__file__), "..", "data", "hme.jsonl")
+    fragment_path = os.path.join(os.path.dirname(__file__), "..", "data", "hme_authority_fragment.jsonl")
     if not os.path.exists(hme_path) or not os.path.exists(fragment_path):
         return  # skip if files not present
 

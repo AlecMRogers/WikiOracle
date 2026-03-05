@@ -5,6 +5,8 @@ Response generation and provider coordination:
   - Provider adapter implementations for various API backends
   - Prompt assembly and context injection
   - process_chat orchestration for concurrent provider calls
+  - Online training pipeline (Stages 2–4): DegreeOfTruth, truth merge,
+    Sensation preprocessing, and /train POST to NanoChat (see doc/Training.md)
 """
 
 from __future__ import annotations
@@ -22,16 +24,22 @@ from typing import Any, Callable, Dict, Iterable, List, Optional
 import requests
 
 from config import Config, DEBUG_MODE, PROVIDERS, STATELESS_MODE, _load_config_yaml, _PROVIDER_MODELS
+from sensation import preprocess_training_example
 from truth import (
     _fetch_authority_jsonl,
     _has_operator_tag,
+    compute_degree_of_truth,
     compute_derived_truth,
     ensure_xhtml,
     get_authority_entries,
     get_provider_entries,
+    load_server_truth,
+    merge_client_truth,
     resolve_api_key,
     resolve_authority_entries,
+    save_server_truth,
     strip_xhtml,
+    user_guid,
     utc_now_iso,
 )
 from state import (
@@ -1656,4 +1664,89 @@ def process_chat(
                 state["selected_conversation"] = new_conv["id"]
 
     state["conversations"] = conversations
+
+    # ── Post-response pipeline: DoT + truth merge + online training ──
+    # These stages run after the user has received the response.
+    server_cfg = runtime_cfg.get("server", {})
+    wo_cfg = server_cfg.get("wikioracle", {})
+    ot_cfg = wo_cfg.get("online_training", {})
+    if ot_cfg.get("enabled", False) and not config_mod.STATELESS_MODE:
+        try:
+            client_truth = state.get("truth") or []
+            user_section = runtime_cfg.get("user", {})
+            author_guid = user_guid(
+                user_section.get("name", "User"),
+                uid=user_section.get("uid") or None,
+            )
+
+            # Ensure user GUID is stored at root level of state
+            state["user_guid"] = author_guid
+
+            server_truth_path = Path(ot_cfg.get("truth_corpus_path", "data/truth.jsonl"))
+            server_truth = load_server_truth(server_truth_path)
+
+            # Stage 2: compute DegreeOfTruth (before merge so it measures
+            #          the gap between client and pre-merge server truth).
+            #
+            # DoT range is -1..+1:
+            #   +1 = full agreement   (learn a true statement)
+            #    0 = no shared context (skip — nothing to learn)
+            #   -1 = full disagreement (learn a false statement)
+            #
+            # Both true (+1) and false (-1) are valuable training signal.
+            # A DoT near 0 means the truth tables share no entries; in a
+            # future pluralistic model this might instead prompt for user
+            # feedback to disambiguate which context applies before
+            # committing to a training step.
+            dot = compute_degree_of_truth(server_truth, client_truth)
+
+            # Stage 3: merge client truth into server truth
+            merge_rate = float(ot_cfg.get("merge_rate", 0.1))
+            server_truth = merge_client_truth(
+                server_truth, client_truth,
+                merge_rate=merge_rate, author=author_guid,
+            )
+            save_server_truth(server_truth_path, server_truth)
+            print(f"[WikiOracle] Online training: DoT={dot:.3f} "
+                  f"(server={len(server_truth)} entries, client={len(client_truth)} entries)")
+
+            # Stage 4: train NanoChat (online SFT, if provider is wikioracle)
+            if provider == "wikioracle":
+                nanochat_url = cfg.base_url.rstrip("/")
+                # Build the full prompt messages for training
+                train_messages = _bundle_to_messages(bundle, provider)
+                # Append the response as the final assistant turn
+                train_messages.append({"role": "assistant", "content": response_text})
+                try:
+                    train_device = ot_cfg.get("device", "cpu")
+                    # Tag messages with XML structure (Sensation preprocessing)
+                    # so the LLM learns WikiOracle's <fact>/<feeling>/<Q>/<R> protocol.
+                    tagged_messages = preprocess_training_example(
+                        [{"role": m["role"], "content": m.get("content", "")}
+                         for m in train_messages],
+                        degree_of_truth=dot,
+                    )
+                    train_resp = requests.post(
+                        f"{nanochat_url}/train",
+                        json={
+                            "messages": tagged_messages,
+                            "degree_of_truth": dot,
+                            "device": train_device,
+                        },
+                        timeout=30,
+                    )
+                    if train_resp.ok:
+                        result = train_resp.json()
+                        loss = result.get("loss")
+                        if loss is not None:
+                            print(f"[WikiOracle] Online training: loss={loss:.4f}")
+                        else:
+                            print(f"[WikiOracle] Online training: {result.get('message', 'no-op')}")
+                    else:
+                        print(f"[WikiOracle] Online training: HTTP {train_resp.status_code}")
+                except requests.RequestException as exc:
+                    print(f"[WikiOracle] Online training: request failed: {exc}")
+        except Exception as exc:
+            print(f"[WikiOracle] Online training pipeline error: {exc}")
+
     return response_text, state

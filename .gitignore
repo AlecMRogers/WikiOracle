@@ -1,7 +1,7 @@
 #
 *.pem
 *~
-.venv/
+.venv*/
 .ec2/
 .claude/
 output/
@@ -14,3 +14,4 @@ __pycache__/
 /conversations/*.json
 /conversations/*.jsonl
 /bin/__pycache__/
+data/checkpoints/

@@ -328,8 +328,8 @@ def test_no_operators():
 
 
 def test_hme_jsonl_operators():
-    """Load spec/hme.jsonl and verify derived truth for operator entries."""
-    hme_path = os.path.join(os.path.dirname(__file__), "..", "spec", "hme.jsonl")
+    """Load data/hme.jsonl and verify derived truth for operator entries."""
+    hme_path = os.path.join(os.path.dirname(__file__), "..", "data", "hme.jsonl")
     if not os.path.exists(hme_path):
         return  # skip if file not present
 

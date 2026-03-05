@@ -99,5 +99,5 @@ The current operator set covers propositional logic under Strong Kleene semantic
 | `bin/truth.py` | `parse_operator_block()`, `ensure_operator_id()`, `compute_derived_truth()`, `_eval_operator()` |
 | `bin/response.py` | Excludes operator entries from RAG via `_has_operator_tag()`; uses `_derived_certainty` for ranking |
 | `html/util.js` | Trust editor UI: unified XHTML textarea with template dropdown (AND/OR/NOT/NON), IDs visible for `<child id>` references |
-| `spec/hme.jsonl` | Test data with AND, OR, NOT, NON operator entries |
+| `data/hme.jsonl` | Test data with AND, OR, NOT, NON operator entries |
 | `test/test_derived_truth.py` | Unit tests covering parsing, ID generation, and/or/not/non evaluation, chaining, cycles, and hme.jsonl integration |

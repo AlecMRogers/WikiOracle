@@ -31,6 +31,7 @@ from truth import (
     _timestamp_sort_key,
     ensure_xhtml,
     strip_xhtml,
+    user_guid,
     utc_now_iso,
 )
 
@@ -38,7 +39,7 @@ from truth import (
 # ---------------------------------------------------------------------------
 # State-level constants
 # ---------------------------------------------------------------------------
-SCHEMA_URL = "https://raw.githubusercontent.com/arborrhythms/WikiOracle/main/spec/llm_state.json"
+SCHEMA_URL = "https://raw.githubusercontent.com/arborrhythms/WikiOracle/main/data/llm_state.json"
 SCHEMA_BASENAME = "llm_state.json"  # Basename accepted when URL host/path vary.
 STATE_VERSION = 2  # Current state grammar version.
 STATE_SCHEMA_ID = "wikioracle.llm_state"  # Stable schema family identifier.
@@ -221,6 +222,15 @@ def ensure_minimal_state(raw: Any, *, strict: bool = False) -> dict:
         raw_truth = []
     state["truth"] = [_normalize_trust_entry(v) for v in raw_truth]
 
+    # User GUID — deterministic pseudonymous identity stored at root level.
+    # Derived from user.name in config.yaml when available; preserved if
+    # already present in the state (e.g. round-tripping through JSONL).
+    if not state.get("user_guid"):
+        # We can't access config.yaml here (truth.py has no config dep),
+        # so user_guid is populated later by the pipeline (response.py).
+        # If already set on the raw input, preserve it.
+        pass
+
     # Clean up legacy fields
     state.pop("messages", None)
     state.pop("active_path", None)
@@ -331,6 +341,9 @@ def state_to_jsonl(state: dict) -> str:
     sel = state.get("selected_conversation")
     if sel is not None:
         header["selected_conversation"] = sel
+    uguid = state.get("user_guid")
+    if uguid:
+        header["user_guid"] = uguid
     lines.append(json.dumps(header, ensure_ascii=False))
 
     # Conversation records (flattened)
@@ -381,6 +394,8 @@ def jsonl_to_state(text: str) -> dict:
                 state["title"] = obj["title"]
             if "selected_conversation" in obj:
                 state["selected_conversation"] = obj["selected_conversation"]
+            if "user_guid" in obj:
+                state["user_guid"] = obj["user_guid"]
             if "output" in obj and isinstance(obj["output"], str) and obj["output"].strip():
                 state["output"] = obj["output"].strip()  # legacy compat
         elif record_type == "conversation":

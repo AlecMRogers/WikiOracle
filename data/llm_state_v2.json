@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://raw.githubusercontent.com/arborrhythms/WikiOracle/main/spec/llm_state_v2.json",
+  "$id": "https://raw.githubusercontent.com/arborrhythms/WikiOracle/main/data/llm_state_v2.json",
   "title": "WikiOracle LLM State v2 (JSONL)",
   "description": "Hierarchical dialogue state. Grammar: Dialogue → Conversation*, Conversation → (Query|Response)* + Conversation* (children). JSONL: header line, then conversation and truth records. Conversations reference parent via 'parent' field; root conversations omit it.",
   "type": "object",

@@ -174,7 +174,7 @@ When a user sends a query:
 
 ### Syllogistic Examples
 
-The file `spec/hme.jsonl` contains demonstration data that tests the reasoning engine:
+The file `data/hme.jsonl` contains demonstration data that tests the reasoning engine:
 
 - **Axioms** (certainty=1.0): "All men are mortal", "Socrates is a man", etc.
 - **Valid deductions** (certainty=1.0): "Socrates is mortal" follows from the axioms.
