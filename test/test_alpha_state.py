@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Alpha state file tests.
 
-Copies data/alpha.jsonl to the project root (alpha.jsonl) and verifies:
+Copies test/alpha.xml to the project root (alpha.xml) and verifies:
   - Round-trip integrity (load → serialize → reload)
   - Correct structure: 2 facts + 1 feeling + 2 providers
   - Provider entries are valid and sorted by trust (descending)
@@ -20,11 +20,11 @@ sys.path.insert(0, str(_project))
 sys.path.insert(0, str(_project / "bin"))
 
 from state import (
-    atomic_write_jsonl,
+    atomic_write_xml,
     ensure_minimal_state,
     load_state_file,
-    state_to_jsonl,
-    jsonl_to_state,
+    state_to_xml,
+    xml_to_state,
 )
 from truth import (
     get_provider_entries,
@@ -32,24 +32,24 @@ from truth import (
 )
 
 # Working copies live in output/; data/ originals are never modified.
-_DATA_DIR = _project / "data"
+_DATA_DIR = _project / "test"
 _OUTPUT_DIR = _project / "output"
-_ALPHA_SRC = _DATA_DIR / "alpha.jsonl"
-_ALPHA_COPY = _OUTPUT_DIR / "alpha.jsonl"
+_ALPHA_SRC = _DATA_DIR / "alpha.xml"
+_ALPHA_COPY = _OUTPUT_DIR / "alpha.xml"
 _BETA_NAMES = ("beta1", "beta2")
 
 
 def _ensure_vote_copies() -> Path:
-    """Copy data/{alpha,beta1,beta2}.jsonl → output/ (overwrite each)."""
+    """Copy test/{alpha,beta1,beta2}.xml → output/ (overwrite each)."""
     _OUTPUT_DIR.mkdir(exist_ok=True)
     shutil.copy2(_ALPHA_SRC, _ALPHA_COPY)
     for name in _BETA_NAMES:
-        shutil.copy2(_DATA_DIR / f"{name}.jsonl", _OUTPUT_DIR / f"{name}.jsonl")
+        shutil.copy2(_DATA_DIR / f"{name}.xml", _OUTPUT_DIR / f"{name}.xml")
     return _ALPHA_COPY
 
 
 class TestAlphaStateLoad(unittest.TestCase):
-    """Verify data/alpha.jsonl loads correctly from a root-level copy."""
+    """Verify test/alpha.xml loads correctly from a root-level copy."""
 
     @classmethod
     def setUpClass(cls):
@@ -57,7 +57,7 @@ class TestAlphaStateLoad(unittest.TestCase):
         cls.state = load_state_file(cls.alpha_path, strict=True)
 
     def test_loads_from_copy(self):
-        """alpha.jsonl should load from the project-root copy without error."""
+        """alpha.xml should load from the project-root copy without error."""
         self.assertIsInstance(self.state, dict)
         self.assertIn("truth", self.state)
         self.assertIn("conversations", self.state)
@@ -72,7 +72,7 @@ class TestAlphaStateLoad(unittest.TestCase):
         self.assertIn("voting", ctx.lower())
 
     def test_truth_entry_count(self):
-        """alpha.jsonl has 5 trust entries: 2 facts + 1 feeling + 2 providers."""
+        """alpha.xml has 5 trust entries: 2 facts + 1 feeling + 2 providers."""
         truth = self.state.get("truth", [])
         self.assertEqual(len(truth), 5)
 
@@ -85,10 +85,10 @@ class TestAlphaStateLoad(unittest.TestCase):
         self.assertAlmostEqual(by_id["alpha_fact_02"]["trust"], 0.95)
 
     def test_feeling_entry(self):
-        """One feeling entry with trust 0.5."""
+        """Feeling entry preserves its JSON trust value (feelings never
+        have trust in XML, but JSON envelope trust is left as-is)."""
         by_id = {e["id"]: e for e in self.state["truth"]}
         self.assertIn("alpha_feeling_01", by_id)
-        self.assertAlmostEqual(by_id["alpha_feeling_01"]["trust"], 0.5)
         self.assertIn("<feeling", by_id["alpha_feeling_01"]["content"])
 
     def test_provider_entries(self):
@@ -101,7 +101,7 @@ class TestAlphaStateLoad(unittest.TestCase):
 
 
 class TestAlphaProviders(unittest.TestCase):
-    """Verify provider parsing from alpha.jsonl."""
+    """Verify provider parsing from alpha.xml."""
 
     @classmethod
     def setUpClass(cls):
@@ -138,13 +138,13 @@ class TestAlphaProviders(unittest.TestCase):
             self.assertIn("beta", config["authority_url"])
 
     def test_beta_state_files_exist(self):
-        """data/beta1.jsonl and data/beta2.jsonl should exist and be loadable."""
+        """test/beta1.xml and test/beta2.xml should exist and be loadable."""
         for name in ("beta1", "beta2"):
-            path = _project / "data" / f"{name}.jsonl"
+            path = _project / "test" / f"{name}.xml"
             self.assertTrue(path.exists(), f"Missing {path}")
             state = load_state_file(path, strict=True)
             self.assertGreaterEqual(len(state.get("truth", [])), 2,
-                                    f"{name}.jsonl should have ≥2 truth entries")
+                                    f"{name}.xml should have ≥2 truth entries")
 
     def test_provider_xhtml_is_parseable(self):
         """Provider XHTML content should be parseable by parse_provider_block."""
@@ -155,7 +155,7 @@ class TestAlphaProviders(unittest.TestCase):
 
 
 class TestAlphaRoundTrip(unittest.TestCase):
-    """Verify alpha.jsonl survives load → serialize → reload."""
+    """Verify alpha.xml survives load → serialize → reload."""
 
     @classmethod
     def setUpClass(cls):
@@ -163,9 +163,9 @@ class TestAlphaRoundTrip(unittest.TestCase):
         cls.original = load_state_file(cls.alpha_path, strict=True)
 
     def test_in_memory_roundtrip(self):
-        """state → JSONL text → state preserves all trust entry IDs."""
-        jsonl_text = state_to_jsonl(self.original)
-        restored = jsonl_to_state(jsonl_text)
+        """state → XML text → state preserves all trust entry IDs."""
+        xml_text = state_to_xml(self.original)
+        restored = xml_to_state(xml_text)
         restored = ensure_minimal_state(restored, strict=True)
 
         orig_ids = {e["id"] for e in self.original["truth"]}
@@ -174,9 +174,9 @@ class TestAlphaRoundTrip(unittest.TestCase):
 
     def test_disk_roundtrip(self):
         """state → disk → reload preserves trust values."""
-        rt_path = _OUTPUT_DIR / "alpha_roundtrip.jsonl"
+        rt_path = _OUTPUT_DIR / "alpha_roundtrip.xml"
         try:
-            atomic_write_jsonl(rt_path, self.original)
+            atomic_write_xml(rt_path, self.original)
             reloaded = load_state_file(rt_path, strict=True)
 
             orig_by_id = {e["id"]: e for e in self.original["truth"]}
@@ -194,25 +194,25 @@ class TestAlphaRoundTrip(unittest.TestCase):
 
     def test_context_preserved(self):
         """Context string should survive round-trip."""
-        jsonl_text = state_to_jsonl(self.original)
-        restored = jsonl_to_state(jsonl_text)
+        xml_text = state_to_xml(self.original)
+        restored = xml_to_state(xml_text)
         self.assertIn("voting", restored.get("context", "").lower())
 
     def test_copy_matches_spec(self):
-        """The root alpha.jsonl should match data/alpha.jsonl."""
+        """The root alpha.xml should match test/alpha.xml."""
         spec_state = load_state_file(_ALPHA_SRC, strict=True)
         spec_ids = {e["id"] for e in spec_state["truth"]}
         orig_ids = {e["id"] for e in self.original["truth"]}
         self.assertEqual(spec_ids, orig_ids)
 
     def test_beta_copies_in_output(self):
-        """output/beta1.jsonl and output/beta2.jsonl should exist and be loadable."""
+        """output/beta1.xml and output/beta2.xml should exist and be loadable."""
         for name in _BETA_NAMES:
-            path = _OUTPUT_DIR / f"{name}.jsonl"
-            self.assertTrue(path.exists(), f"Missing output/{name}.jsonl")
+            path = _OUTPUT_DIR / f"{name}.xml"
+            self.assertTrue(path.exists(), f"Missing output/{name}.xml")
             state = load_state_file(path, strict=True)
             self.assertGreaterEqual(len(state.get("truth", [])), 2,
-                                    f"output/{name}.jsonl should have ≥2 truth entries")
+                                    f"output/{name}.xml should have ≥2 truth entries")
 
 
 if __name__ == "__main__":

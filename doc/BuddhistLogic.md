@@ -41,8 +41,9 @@ WikiOracle expresses the same epistemic structure through five truth types.
 
 | WikiOracle Type | Epistemic Role | Buddhist Equivalent |
 |---|---|---|
-| **Feeling** | immediate experiential signal or query | perception (*pratyakṣa*) |
-| **Fact** | conceptual cognition about the world | conceptual judgment (*savikalpa-jñāna*) |
+| **Feeling** | immediate experiential signal; orthogonal to truth (neither position in tetralemma) | perception (*pratyakṣa*) — pre-conceptual |
+| **Fact (knowledge)** | universal/inferential cognition | inference (*anumāna*) — conceptual judgment |
+| **Fact (news)** | spatiotemporally bound observation | direct perception (*pratyakṣa*) — session-only |
 | **Operator** | logical transformation between concepts | inference (*anumāna*) |
 | **Authority** | trusted testimony from another knower | testimony (*āgama / śabda*) |
 | **Provider** | the cognizer supplying the claim | cognizer (*pramātṛ*) |
@@ -83,12 +84,12 @@ truth is **frame-indexed**.
 
 Buddhist logic frequently uses the **catuṣkoṭi (tetralemma)**:
 
-| Classical Form | WikiOracle Interpretation |
-|---|---|
-| True | affirmed in a frame |
-| False | negated in a frame |
-| Both | true in some frames and false in others |
-| Neither | epistemically unknown |
+| Classical Form | WikiOracle Interpretation | Truth Type |
+|---|---|---|
+| True | affirmed in a frame | `<fact trust="+1">` |
+| False | negated in a frame | `<fact trust="-1">` |
+| Both | true in some frames and false in others | frame disagreement |
+| Neither | outside the truth lattice entirely | `<feeling>` |
 
 The “both” case represents **frame disagreement**, not logical contradiction.
 
@@ -139,12 +140,23 @@ This produces **epistemic openness** rather than contradiction. Dharmakīrti hol
 
 Combining frames and epistemic states yields the following structure:
 
-| State | Interpretation |
-|---|---|
-| True | affirmed in frame |
-| False | rejected in frame |
-| Neither | unknown within frame |
-| Both | disagreement across frames |
+| State | Interpretation | Examples |
+|---|---|---|
+| True | affirmed in frame | `<fact trust="+1">` |
+| False | rejected in frame | `<fact trust="-1">` |
+| Neither | outside the truth lattice; not truth-evaluable | `<feeling>` — excluded from training |
+| Both | disagreement across frames | frame-indexed contradiction |
+
+### Feelings and the "Neither" Position
+
+Feelings occupy the *neither* position in the tetralemma. They are not
+truth-evaluable propositions — they are pre-conceptual experiential signals
+(e.g., "That's a great question!", "I hope that helps."). In WikiOracle:
+
+- Feelings carry **no trust attribute** — they are orthogonal to the truth lattice.
+- Feelings are **excluded from model training** — they do not update NanoChat weights.
+- Feelings are **excluded from server persistence** — only knowledge facts are stored.
+- Poetry, greetings, and subjective expressions are canonical examples.
 
 This preserves the tetralemma without logical explosion.
 
@@ -156,8 +168,9 @@ WikiOracle’s ontology forms a computational analogue of Buddhist epistemology.
 
 | WikiOracle | Buddhist Epistemology |
 |---|---|
-| Feeling | perception |
-| Fact | conceptual cognition |
+| Feeling | perception (pre-conceptual; neither in tetralemma) |
+| Fact (knowledge) | inferential cognition (*anumāna*) |
+| Fact (news) | direct perception (*pratyakṣa*) — spatiotemporally bound |
 | Operator | inference |
 | Authority | testimony |
 | Provider | cognizer |

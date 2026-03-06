@@ -189,16 +189,16 @@ class TestJSONLRoundTrip(unittest.TestCase):
         self.assertEqual(restored["selected_conversation"], "c_2")
 
     def test_hme_jsonl_roundtrip(self):
-        """data/hme.jsonl survives load → serialize → reload with all trust entries intact."""
-        spec_path = Path(__file__).resolve().parent.parent / "data" / "hme.jsonl"
+        """test/hme.xml survives load → serialize → reload with all trust entries intact."""
+        spec_path = Path(__file__).resolve().parent / "hme.xml"
         if not spec_path.exists():
-            self.skipTest("data/hme.jsonl not found")
+            self.skipTest("test/hme.xml not found")
 
         original = load_state_file(spec_path, strict=True)
 
         # Verify initial parse has expected trust entries
         trust = original.get("truth", [])
-        self.assertGreaterEqual(len(trust), 10, "hme.jsonl should have ≥10 trust entries")
+        self.assertGreaterEqual(len(trust), 10, "hme.xml should have ≥10 trust entries")
         ids_orig = {e["id"] for e in trust if "id" in e}
         self.assertIn("axiom_01", ids_orig)
         self.assertIn("false_01", ids_orig)

@@ -122,8 +122,8 @@ That is the foundation for WikiOracle.
 
 WikiOracle implements a Hierarchical Mixture of Experts (HME) architecture for evaluating claims. The system operates on two file types:
 
-- **State files** (`.jsonl`): contain conversations, trust entries, and context.
-- **Config files** (`.yaml`): contain provider credentials, chat settings, and retrieval parameters.
+- **State files** (`.xml`): contain conversations, trust entries, and context (WikiOracle State format, validated by `data/state.xsd`). Legacy `.jsonl` files are auto-detected and supported for migration.
+- **Config files** (`.xml`): contain provider credentials, chat settings, and retrieval parameters (WikiOracle Config format, validated by `data/config.xsd`).
 
 ### Certainty: Kleene Ternary Logic
 
@@ -174,7 +174,7 @@ When a user sends a query:
 
 ### Syllogistic Examples
 
-The file `data/hme.jsonl` contains demonstration data that tests the reasoning engine:
+The file `test/hme.xml` contains demonstration data that tests the reasoning engine:
 
 - **Axioms** (certainty=1.0): "All men are mortal", "Socrates is a man", etc.
 - **Valid deductions** (certainty=1.0): "Socrates is mortal" follows from the axioms.
@@ -182,3 +182,48 @@ The file `data/hme.jsonl` contains demonstration data that tests the reasoning e
 - **Disbelief** (certainty=-0.9): "Penguins can fly" — known false despite soft premises.
 - **External sources**: Wikipedia and Snopes links as verifiable references.
 - **Provider entry**: A Claude `<provider>` block demonstrating HME fan-out.
+
+---
+
+## Spatiotemporal Binding and Worldline Privacy
+
+Facts in WikiOracle are classified into two kinds based on their relationship
+to spacetime:
+
+| Kind | Description | Persistence |
+|---|---|---|
+| **Knowledge** | Universal claims with no spatiotemporal anchor | Server truth table |
+| **News** | Observations bound to a specific place and/or time | Session-only |
+
+This distinction is rooted in Buddhist epistemology: knowledge facts correspond
+to *anumāna* (inference — universally valid reasoning), while news facts
+correspond to *pratyakṣa* (direct perception — bound to the observer's
+spatiotemporal position).
+
+### Why news facts are session-only
+
+Persisting spatiotemporally bound observations creates a **worldline** — a
+traceable path through spacetime that could identify a user. If a server
+accumulates entries like "User was in Paris at 9am" and "User was in London
+at 3pm", an adversary could reconstruct the user's physical movements.
+
+WikiOracle prevents this by:
+
+1. **Classifying** facts as knowledge or news via `is_knowledge_fact()` and
+   `is_news_fact()` in `bin/truth.py`.  News facts are identified by the
+   presence of `<place>` or `<time>` child elements with real values inside
+   the XHTML content.
+2. **Filtering** server persistence through `filter_knowledge_only()` — only
+   knowledge facts reach the server truth table.
+3. **Detecting** identity-collapse risk via `detect_identity_collapse()` —
+   scanning content for PII patterns (emails, phone numbers, GPS coordinates,
+   street addresses, named persons with temporal prepositions).
+4. **Stripping** spacetime child elements via `strip_spacetime_elements()` when
+   content needs to be anonymised (removes `<place>` and `<time>` elements).
+
+### PII patterns detected
+
+The identity-collapse detector covers: email addresses, phone numbers,
+@handles, usernames, IP addresses, GPS/DMS coordinates, street addresses,
+specific clock times and ISO timestamps, and named individuals combined
+with temporal or spatial prepositions.

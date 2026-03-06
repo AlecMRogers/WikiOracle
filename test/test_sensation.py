@@ -167,7 +167,8 @@ class TestTagMessage(unittest.TestCase):
         self.assertIn("<R>", result)
         self.assertIn("<fact", result)
         self.assertIn('trust="0.5"', result)
-        self.assertIn('spacetime="[unverified]"', result)
+        self.assertNotIn("spacetime=", result)
+        self.assertNotIn("kind=", result)
 
     def test_explicit_trust_overrides(self):
         result = tag_message("Hello world", "user", trust=0.9)

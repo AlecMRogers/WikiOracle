@@ -32,7 +32,7 @@ This constitution defines the non-negotiable invariants for WikiOracle's truth s
 WikiOracle's truth layer is composed of explicit, user-visible primitives stored in state:
 
 1. **Trust entries**: atomic propositions, citations, or computed evidence. They carry a `certainty` in `[-1, +1]` (Kleene-style: believed, unknown, disbelieved).
-2. **Authorities**: pointers to external knowledge bases (remote `llm.jsonl` files). Import is explicit and certainty is scaled (we trust what they trust, to a degree).
+2. **Authorities**: pointers to external knowledge bases (remote `state.xml` files). Import is explicit and certainty is scaled (we trust what they trust, to a degree).
 3. **Implications**: explicit "if...then..." relationships, treated as typed operators (material/strict/relevant), not a single overloaded connective.
 4. **Providers**: external LLMs used as tools ("other minds") whose outputs become evidence, not unquestionable authority.
 
@@ -101,5 +101,5 @@ This constitution is intentionally compact. For the rest of the system design:
 - `Logic.md`: logical operators (and/or/not/non) and derived truth computation.
 - `FreedomEmpathyTruth.md`: the Freedom/Empathy/Truth safety frame.
 - `Security.md`: concrete security considerations for the local-first implementation.
-- `Architecture.md`: the current software architecture (Flask shim + UI + `llm.jsonl`).
+- `Architecture.md`: the current software architecture (Flask shim + UI + `state.xml`).
 - `FutureWork.md`: roadmap items (trust network, sentence-level prediction, conceptual-space operations).

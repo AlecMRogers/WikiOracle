@@ -4,7 +4,7 @@ WikiOracle is a local-first application. The Flask server binds to `127.0.0.1:88
 
 ## 1. Private Data
 
-**Conversation state** (`llm.jsonl`) contains the user's full dialogue history, system context, and trust entries. It lives on disk next to the server process.
+**Conversation state** (`state.xml`) contains the user's full dialogue history, system context, and trust entries. It lives on disk next to the server process.
 
 - In **stateful mode**, state is read from and written to disk by the server. No state leaves the machine unless the user explicitly exports it.
 - In **stateless mode**, state is held in `sessionStorage` and sent to the server with each request. The server does not persist it. A same-origin script context can read `sessionStorage`, so the CSP policy (see below) is the primary defence against exfiltration.
@@ -18,10 +18,10 @@ WikiOracle is a local-first application. The Flask server binds to `127.0.0.1:88
 Provider API keys (OpenAI, Anthropic, etc.) can be configured in three places, listed in precedence order:
 
 1. **Environment variables** (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) — recommended for any deployment beyond localhost. Keys never appear in served content.
-2. **`config.yaml`** `providers.<name>.api_key` — convenient for local development but the raw YAML is served to the client via `/bootstrap` and `/config` GET endpoints. Any same-origin script context can read these keys.
+2. **`config.xml`** `providers.<name>.api_key` — convenient for local development but the config is served to the client via `/bootstrap` and `/config` GET endpoints. Any same-origin script context can read these keys.
 3. **Trust entries** (`<provider><api_key>$ENV_VAR</api_key></provider>`) — the `$` prefix triggers env-var resolution on the server; the literal key is never stored in state.
 
-**Recommendation:** In any deployment where the server is reachable beyond `127.0.0.1`, use environment variables exclusively. Do not place raw API keys in `config.yaml`.
+**Recommendation:** In any deployment where the server is reachable beyond `127.0.0.1`, use environment variables exclusively. Do not place raw API keys in `config.xml`.
 
 The `config.server.providers` metadata (served via `/config` and `/bootstrap`) exposes only `has_key` (boolean) and `needs_key` (boolean) — never the key itself.
 
@@ -29,7 +29,7 @@ The `config.server.providers` metadata (served via `/config` and `/bootstrap`) e
 
 WikiOracle does not implement authentication. The server trusts any request from an allowed origin (configured via `WIKIORACLE_ALLOWED_ORIGINS`, defaulting to `https://127.0.0.1:8888` and `https://localhost:8888`).
 
-- **Username** is a display label set in Settings, not an authenticated identity. It is stored in `config.yaml` and included in message metadata.
+- **Username** is a display label set in Settings, not an authenticated identity. It is stored in `config.xml` and included in message metadata.
 - **No sessions or tokens.** There is no login, no cookies used for auth, and no per-user isolation. If multiple users share a server instance, they share the same state.
 
 For multi-user or public deployments, WikiOracle should sit behind a reverse proxy that handles authentication and maps users to separate state files.
@@ -66,7 +66,7 @@ This blocks inline scripts, inline styles, and external resource loading (except
 
 - LLM responses are rendered as HTML (not plain text). A sufficiently adversarial prompt could produce markup that, while blocked by CSP from executing scripts, might still create misleading UI (e.g., fake form elements via `<input>` tags). The XHTML validator does not currently strip all non-semantic HTML.
 - Trust entry content is XHTML and is rendered in the trust editor and included in RAG context. Malicious trust entries could inject misleading content into prompts.
-- The `/bootstrap` and `/config` endpoints serve raw `config.yaml` to the client. If `config.yaml` contains secrets and a same-origin XSS vector exists, those secrets could be read.
+- The `/bootstrap` and `/config` endpoints serve raw `config.xml` to the client. If `config.xml` contains secrets and a same-origin XSS vector exists, those secrets could be read.
 
 ## 5. CORS
 

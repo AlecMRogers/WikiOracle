@@ -65,8 +65,7 @@ WIKIORACLE_APP ?= bin/wikioracle.py
 DEPLOY_ARGS := --wo-key-file=$(WO_KEY_FILE) --wo-user=$(WO_USER) \
                --wo-host=$(WO_HOST) --wo-dest=$(WO_DEST)
 
-# Vote question (override on command line, e.g. make vote VOTE_Q="Should we cut taxes?")
-VOTE_Q           ?= Lets have a vote on taxes. Should we raise them?
+# Vote question is now handled by test_voting.py::TestAlphaOutputDiamond
 
 # --- Phony targets ------------------------------------------------------------
 
@@ -77,14 +76,15 @@ VOTE_Q           ?= Lets have a vote on taxes. Should we raise them?
         sft-cpu sft-gpu \
         train-cpu train-gpu \
         eval-cpu eval-gpu \
-        init run test vote run-vote run-cli run-web \
+        init run test run-cli run-web \
         report clean clean-all \
         remote remote-retrieve remote-ssh remote-status remote-logs \
         remote-deploy remote-deploy-launch \
         wo-deploy wo-start wo-stop wo-restart wo-status wo-logs \
         wo-chat-deploy wo-chat-start wo-chat-stop wo-chat-restart wo-chat-status wo-chat-logs \
         checkpoint-pull checkpoint-push \
-        preprocess
+        preprocess \
+        openclaw-setup openclaw-run
 
 # --- Help ---------------------------------------------------------------------
 
@@ -118,9 +118,7 @@ help:
 	@echo ""
 	@echo "Evaluation & Inference:"
 	@echo "  make test              Run unit tests"
-	@echo "  make vote              Start server, run alpha/beta vote, stop server"
-	@echo "  make run               Start WikiOracle local shim (config.yaml)"
-	@echo "  make run-vote          Start server with alpha.yaml (stateless, for voting)"
+	@echo "  make run               Start WikiOracle local shim (config.xml)"
 	@echo "  make eval-cpu           Evaluate model (CPU)"
 	@echo "  make eval-gpu           Evaluate model (GPU)"
 	@echo "  make run-cli            Chat with the model (CLI)"
@@ -158,6 +156,10 @@ help:
 	@echo "  make checkpoint-pull    Pull SFT weights from WikiOracle → data/checkpoints/"
 	@echo "  make checkpoint-push    Push data/checkpoints/ → WikiOracle SFT weights"
 	@echo ""
+	@echo "OpenClaw (multi-channel front-end):"
+	@echo "  make openclaw-setup        Install OpenClaw dependencies (Slack/Discord/Telegram)"
+	@echo "  make openclaw-run          Run OpenClaw adapter (use OPENCLAW_ARGS='--adapter slack')"
+	@echo ""
 	@echo "Cleanup:"
 	@echo "  make clean              Remove Python caches"
 	@echo "  make clean-all          Remove caches and venv"
@@ -172,7 +174,6 @@ help:
 	@echo "  DATA_SHARDS_FULL=370    Full data shards for GPU training"
 	@echo "  EC2_INSTANCE_TYPE       EC2 instance type (default: p5.4xlarge)"
 	@echo "  EC2_DISK_SIZE           Root EBS volume in GB (default: 200)"
-	@echo "  VOTE_Q='...'            Vote question (default: taxes)"
 	@echo "  ALERT_EMAIL             Email for idle-instance alerts (required for remote builds)"
 
 # ---- All ----------------------------------------------------------------------
@@ -275,7 +276,7 @@ wo-logs:
 
 WO_CHAT_DEST     := $(WO_DEST)
 # Extra untracked files the server needs (e.g. runtime config with secrets).
-WO_CHAT_EXTRA    := config.yaml
+WO_CHAT_EXTRA    := config.xml
 
 .PHONY: wo-chat-deploy wo-chat-start wo-chat-stop wo-chat-restart wo-chat-status wo-chat-logs wo-fix-proxy
 
@@ -285,26 +286,26 @@ wo-chat-deploy:
 		-e "ssh -i $(WO_KEY_FILE) -o ConnectTimeout=10" \
 		--files-from=<(git ls-files -- bin html data test requirements.txt; echo $(WO_CHAT_EXTRA)) \
 		. $(WO_USER)@$(WO_HOST):$(WO_CHAT_DEST)/
-	$(WO_SSH) "sudo cp $(WO_CHAT_DEST)/data/wikioracle-chat.service /etc/systemd/system/ && sudo systemctl daemon-reload"
+	$(WO_SSH) "sudo cp $(WO_CHAT_DEST)/data/wikioracle.service /etc/systemd/system/ && sudo systemctl daemon-reload"
 	@echo "Chat shim deployed. Run 'make wo-chat-restart' to apply."
 
 wo-chat-start:
-	$(WO_SSH) "sudo systemctl start wikioracle-chat"
+	$(WO_SSH) "sudo systemctl start wikioracle"
 	@echo "WikiOracle chat shim started on $(WO_HOST)"
 
 wo-chat-stop:
-	$(WO_SSH) "sudo systemctl stop wikioracle-chat"
+	$(WO_SSH) "sudo systemctl stop wikioracle"
 	@echo "WikiOracle chat shim stopped on $(WO_HOST)"
 
 wo-chat-restart:
-	$(WO_SSH) "sudo systemctl restart wikioracle-chat"
+	$(WO_SSH) "sudo systemctl restart wikioracle"
 	@echo "WikiOracle chat shim restarted on $(WO_HOST)"
 
 wo-chat-status:
-	$(WO_SSH) "sudo systemctl status wikioracle-chat --no-pager -l"
+	$(WO_SSH) "sudo systemctl status wikioracle --no-pager -l"
 
 wo-chat-logs:
-	$(WO_SSH) "sudo journalctl -u wikioracle-chat -f --no-pager"
+	$(WO_SSH) "sudo journalctl -u wikioracle -f --no-pager"
 
 # --- Setup --------------------------------------------------------------------
 
@@ -425,52 +426,27 @@ eval-gpu:
 # --- Inference ----------------------------------------------------------------
 
 init:
-	rm -f llm.jsonl
-	@echo "llm.jsonl removed — server will create a fresh one on next start."
+	rm -f state.xml llm.jsonl llm.xml
+	@echo "State files removed — server will create a fresh one on next start."
 
 run:
 	$(SHIM_ACTIVATE) && python3 $(WIKIORACLE_APP)
-
-run-vote:
-	$(SHIM_ACTIVATE) && python3 $(WIKIORACLE_APP) --config alpha.yaml
 
 debug:
 	$(SHIM_ACTIVATE) && python3 $(WIKIORACLE_APP) --debug
 
 test:
-	$(SHIM_ACTIVATE) && python3 -m unittest test.test_wikioracle_state test.test_prompt_bundle test.test_derived_truth test.test_authority test.test_stateless_contract test.test_hme_inference test.test_voting test.test_alpha_state test.test_degree_of_truth test.test_user_guid test.test_sensation -v
+	$(SHIM_ACTIVATE) && python3 -m unittest test.test_wikioracle_state test.test_prompt_bundle test.test_derived_truth test.test_authority test.test_stateless_contract test.test_hme_inference test.test_voting test.test_alpha_state test.test_degree_of_truth test.test_user_guid test.test_sensation test.test_spacetime test.test_config_xml test.test_state_xml -v
 	@echo ""
 	@echo "── online LLM tests (warnings only) ──"
 	@$(SHIM_ACTIVATE) && python3 -m unittest test.test_online_llm -v 2>&1 || echo "⚠  online LLM tests had failures (non-blocking)"
 	@echo ""
+	@echo "── online vote test (warnings only) ──"
+	@$(SHIM_ACTIVATE) && python3 -m unittest test.test_online_vote -v 2>&1 || echo "⚠  online vote test had failures (non-blocking)"
+	@echo ""
 	@echo "── online training tests (warnings only) ──"
 	@$(ACTIVATE) && PYTHONPATH="$(NANOCHAT_BASE):$(CURDIR)/bin" NANOCHAT_BASE_DIR="$(NANOCHAT_BASE)" \
 		python3 -m unittest test.test_online_training -v 2>&1 || echo "⚠  online training tests had failures (non-blocking)"
-
-vote:
-	@mkdir -p output
-	cp data/alpha.jsonl output/alpha.jsonl
-	cp data/beta1.jsonl output/beta1.jsonl
-	cp data/beta2.jsonl output/beta2.jsonl
-	@# Rewrite authority paths so alpha references the output/ copies
-	sed -i '' 's|file://data/|file://output/|g' output/alpha.jsonl
-	@echo "Starting vote server (alpha.yaml) …"
-	@$(SHIM_ACTIVATE) && python3 $(WIKIORACLE_APP) --config alpha.yaml &  \
-		SERVER_PID=$$!;                                                     \
-		sleep 2;                                                            \
-		echo "Server PID $$SERVER_PID — sending vote …";                    \
-		python3 bin/wo -k --provider gemini --file output/alpha.jsonl "$(VOTE_Q)"; \
-		VOTE_RC=$$?;                                                        \
-		echo "Stopping server …";                                           \
-		kill $$SERVER_PID 2>/dev/null; wait $$SERVER_PID 2>/dev/null;       \
-		echo "";                                                            \
-		if [ $$VOTE_RC -eq 0 ]; then                                        \
-			echo "── vote complete ──";                                     \
-			echo "Result written to output/alpha.jsonl";                    \
-		else                                                                \
-			echo "── vote FAILED (exit $$VOTE_RC) ──" >&2;                 \
-			exit $$VOTE_RC;                                                 \
-		fi
 
 run-cli:
 	cd $(NANOCHAT_DIR) && $(ACTIVATE) && \
@@ -480,7 +456,7 @@ run-cli:
 run-web:
 	cd $(NANOCHAT_DIR) && $(ACTIVATE) && \
 		export NANOCHAT_BASE_DIR="$(NANOCHAT_BASE)" && \
-		python ../bin/start_nanochat.py
+		python ../bin/nanochat_ext.py
 
 # --- Report -------------------------------------------------------------------
 
@@ -508,6 +484,20 @@ checkpoint-push:
 		-e "ssh -i $(WO_KEY_FILE) -o ConnectTimeout=10" \
 		"$(CHECKPOINT_BAK)/" "$(WO_USER)@$(WO_HOST):$(WO_CHECKPOINT)/"
 	@echo "Done. Run 'make wo-restart' to reload weights."
+
+# --- OpenClaw -----------------------------------------------------------------
+
+OPENCLAW_DIR  := openclaw
+OPENCLAW_VENV := $(OPENCLAW_DIR)/.venv
+
+openclaw-setup:
+	git submodule update --init $(OPENCLAW_DIR)
+	python3 -m venv $(OPENCLAW_VENV)
+	source "$(CURDIR)/$(OPENCLAW_VENV)/bin/activate" && pip install -r $(OPENCLAW_DIR)/requirements.txt
+
+openclaw-run:
+	@test -d "$(OPENCLAW_VENV)" || { echo "Run 'make openclaw-setup' first"; exit 1; }
+	source "$(CURDIR)/$(OPENCLAW_VENV)/bin/activate" && PYTHONPATH="$(CURDIR)/bin" python3 -m openclaw $(OPENCLAW_ARGS)
 
 # --- Sensation preprocessing --------------------------------------------------
 

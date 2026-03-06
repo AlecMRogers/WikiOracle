@@ -2,7 +2,7 @@
 """wo — WikiOracle command-line client.
 
 Send a query to a running WikiOracle server and append the conversation
-turn to a local JSONL file.
+turn to a local state file.
 
 Usage:
     bin/wo "What is the capital of France?"
@@ -31,6 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import requests
 from state import (
+    atomic_write_xml,
     ensure_minimal_state,
     jsonl_to_state,
     load_state_file,
@@ -52,8 +53,8 @@ def _parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "-f", "--file",
-        default="llm.jsonl",
-        help="JSONL file to read/write (default: llm.jsonl)",
+        default="state.xml",
+        help="State file to read/write (default: state.xml)",
     )
     p.add_argument(
         "-k", "--insecure",
@@ -207,8 +208,11 @@ def _run_stateful(args: argparse.Namespace) -> int:
     state["time"] = now
     state["selected_conversation"] = conv_id
 
-    from state import atomic_write_jsonl
-    atomic_write_jsonl(path, state)
+    if path.suffix.lower() == ".xml":
+        atomic_write_xml(path, state)
+    else:
+        from state import atomic_write_jsonl
+        atomic_write_jsonl(path, state)
     return 0
 
 
@@ -262,8 +266,11 @@ def _run_stateless(args: argparse.Namespace) -> int:
     returned_state = data.get("state")
     if isinstance(returned_state, dict):
         returned_state = ensure_minimal_state(returned_state, strict=False)
-        from state import atomic_write_jsonl
-        atomic_write_jsonl(path, returned_state)
+        if path.suffix.lower() == ".xml":
+            atomic_write_xml(path, returned_state)
+        else:
+            from state import atomic_write_jsonl
+            atomic_write_jsonl(path, returned_state)
     else:
         print("Warning: server did not return state", file=sys.stderr)
 

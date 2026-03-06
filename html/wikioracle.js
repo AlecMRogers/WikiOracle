@@ -1302,7 +1302,7 @@ function bindEvents() {
   });
   document.getElementById("btnSettingsClose").addEventListener("click", closeSettings);
 
-  // Edit config.yaml button
+  // Edit config.xml button
   document.getElementById("btnEditConfig").addEventListener("click", _openConfigEditor);
 
   // Read button
@@ -1504,7 +1504,7 @@ function bindEvents() {
   // Governed by config.ui.swipe_nav_horizontal (default true) and
   // config.ui.swipe_nav_vertical (default false).  Vertical is off because
   // vertical scrolling is used to read content; horizontal swipes
-  // navigate siblings.  Both are stored in config.yaml (ui section).
+  // navigate siblings.  Both are stored in config.xml (ui section).
   if ("ontouchstart" in window || navigator.maxTouchPoints > 0) {
     (function() {
       var container = document.getElementById("chatContainer");
@@ -1675,7 +1675,7 @@ async function _initStateless() {
 
 // Stateful init: server disk is authoritative.
 async function _initStateful() {
-  // Load config from server (YAML-shaped with defaults, includes providers)
+  // Load config from server (with defaults, includes providers)
   try {
     const configData = await api("GET", "/config");
     config = _normalizeConfig(configData.config || {});

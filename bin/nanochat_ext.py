@@ -4,12 +4,14 @@ This module defines routes that are added to the NanoChat ``app`` object
 **from WikiOracle's codebase** so that NanoChat's own source files remain
 unmodified.  The only route so far is ``POST /train`` for online learning.
 
-Usage (from ``bin/start_nanochat.py``):
+Usage (as a library)::
 
-    from nanochat.scripts.chat_web import app
     from nanochat_ext import mount_train_route
     mount_train_route(app)
-    uvicorn.run(app, ...)
+
+Usage (as entry point — replaces ``python -m scripts.chat_web``)::
+
+    python bin/nanochat_ext.py [--num-gpus N] [--port 8000] ...
 """
 
 from __future__ import annotations
@@ -189,3 +191,29 @@ def mount_train_route(app: FastAPI) -> None:
             return {"status": "error", "loss": None, "message": str(e)}
         finally:
             await worker_pool.release_worker(worker)
+
+
+# ---------------------------------------------------------------------------
+# Entry point — launch NanoChat with the /train route mounted
+# ---------------------------------------------------------------------------
+def start_server() -> None:
+    """Launch NanoChat with WikiOracle extensions (online training route).
+
+    This replaces ``python -m scripts.chat_web`` by mounting the /train
+    route onto NanoChat's FastAPI app before starting uvicorn.
+
+    All command-line arguments are the same as ``scripts.chat_web``.
+    """
+    from scripts.chat_web import app, args  # NanoChat's PYTHONPATH
+
+    mount_train_route(app)
+
+    import uvicorn
+
+    print("Starting NanoChat Web Server (with WikiOracle /train extension)")
+    print(f"Temperature: {args.temperature}, Top-k: {args.top_k}, Max tokens: {args.max_tokens}")
+    uvicorn.run(app, host=args.host, port=args.port)
+
+
+if __name__ == "__main__":
+    start_server()

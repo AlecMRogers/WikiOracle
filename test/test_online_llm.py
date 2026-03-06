@@ -2,7 +2,7 @@
 """Integration tests that verify end-to-end chat with online LLM providers.
 
 These tests make REAL network calls to OpenAI and Anthropic APIs using
-the API keys in config.yaml.  They are slow (~5-20s each) and require
+the API keys in config.xml.  They are slow (~5-20s each) and require
 valid credentials.  Failures are treated as warnings in `make test`
 (non-blocking).  Tests without matching API keys are skipped automatically.
 """
@@ -18,7 +18,7 @@ sys.path.insert(0, str(_project))
 sys.path.insert(0, str(_project / "bin"))
 
 import config as config_mod
-from config import Config, _load_config_yaml
+from config import Config, _load_config
 from wikioracle import create_app
 from state import SCHEMA_URL, STATE_VERSION, ensure_minimal_state, atomic_write_jsonl
 
@@ -38,8 +38,8 @@ def _make_state(**overrides):
 
 
 def _has_provider_key(provider: str) -> bool:
-    """Check if config.yaml has an API key for the given provider."""
-    cfg = _load_config_yaml()
+    """Check if config.xml has an API key for the given provider."""
+    cfg = _load_config()
     if not cfg:
         return False
     return bool(cfg.get("providers", {}).get(provider, {}).get("api_key"))
@@ -62,7 +62,7 @@ class _CsrfClient:
 
 
 class _OnlineLLMBase(unittest.TestCase):
-    """Base that creates a Flask test client with real config.yaml providers."""
+    """Base that creates a Flask test client with real config.xml providers."""
 
     STATELESS = False
 
@@ -104,12 +104,12 @@ class _OnlineLLMBase(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Stateful mode tests (server reads config.yaml from disk)
+# Stateful mode tests (server reads config.xml from disk)
 # ---------------------------------------------------------------------------
 class TestStatefulOpenAI(_OnlineLLMBase):
     STATELESS = False
 
-    @unittest.skipUnless(_has_provider_key("openai"), "No OpenAI API key in config.yaml")
+    @unittest.skipUnless(_has_provider_key("openai"), "No OpenAI API key in config.xml")
     def test_chat_openai(self):
         """Stateful: send a message via OpenAI and get a real response."""
         resp = self.client.post("/chat", json={
@@ -122,7 +122,7 @@ class TestStatefulOpenAI(_OnlineLLMBase):
 class TestStatefulAnthropic(_OnlineLLMBase):
     STATELESS = False
 
-    @unittest.skipUnless(_has_provider_key("anthropic"), "No Anthropic API key in config.yaml")
+    @unittest.skipUnless(_has_provider_key("anthropic"), "No Anthropic API key in config.xml")
     def test_chat_anthropic(self):
         """Stateful: send a message via Anthropic and get a real response."""
         resp = self.client.post("/chat", json={
@@ -138,10 +138,10 @@ class TestStatefulAnthropic(_OnlineLLMBase):
 class TestStatelessOpenAI(_OnlineLLMBase):
     STATELESS = True
 
-    @unittest.skipUnless(_has_provider_key("openai"), "No OpenAI API key in config.yaml")
+    @unittest.skipUnless(_has_provider_key("openai"), "No OpenAI API key in config.xml")
     def test_chat_openai_stateless(self):
         """Stateless: send a message via OpenAI with client-supplied state."""
-        runtime_config = _load_config_yaml() or {}
+        runtime_config = _load_config() or {}
         resp = self.client.post("/chat", json={
             "message": "Reply with exactly: ONLINE_TEST_OK",
             "state": _make_state(),
@@ -158,10 +158,10 @@ class TestStatelessOpenAI(_OnlineLLMBase):
 class TestStatelessAnthropic(_OnlineLLMBase):
     STATELESS = True
 
-    @unittest.skipUnless(_has_provider_key("anthropic"), "No Anthropic API key in config.yaml")
+    @unittest.skipUnless(_has_provider_key("anthropic"), "No Anthropic API key in config.xml")
     def test_chat_anthropic_stateless(self):
         """Stateless: send a message via Anthropic with client-supplied state."""
-        runtime_config = _load_config_yaml() or {}
+        runtime_config = _load_config() or {}
         resp = self.client.post("/chat", json={
             "message": "Reply with exactly: ONLINE_TEST_OK",
             "state": _make_state(),

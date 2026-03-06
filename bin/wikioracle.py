@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """WikiOracle local shim (conversation-based hierarchy).
 
-Local-first Flask server that owns one llm.jsonl file, proxies chat to an
+Local-first Flask server that owns one state.xml file, proxies chat to an
 upstream stateless endpoint (NanoChat, OpenAI, Anthropic), and supports
-deterministic merge/import of exported llm_*.jsonl files.
+deterministic merge/import of exported state files.
 
 REST API Endpoints:
 
@@ -24,11 +24,11 @@ REST API Endpoints:
 
 Usage:
     # Server mode (default)
-    export WIKIORACLE_STATE_FILE="/abs/path/to/llm.jsonl"
+    export WIKIORACLE_STATE_FILE="/abs/path/to/state.xml"
     python bin/wikioracle.py
 
     # CLI merge mode
-    python bin/wikioracle.py merge llm_2026.02.22.1441.jsonl llm_2026.02.23.0900.jsonl
+    python bin/wikioracle.py merge state_2026.02.22.1441.xml state_2026.02.23.0900.xml
 
 Then open https://localhost:8888/
 """
@@ -53,22 +53,23 @@ import config as config_mod
 from config import (
     Config,
     PROVIDERS,
-    _CONFIG_YAML,
-    _CONFIG_YAML_STATUS,
+    _CONFIG,
+    _CONFIG_STATUS,
     _build_providers,
     _normalize_config,
     _env_bool,
     _ensure_self_signed_cert,
-    _load_config_yaml,
-    config_to_yaml,
+    _load_config,
+    config_to_xml,
     load_config,
     parse_args,
-    reload_config_yaml,
+    reload_config,
 )
 from state import (
     SCHEMA_URL,
     STATE_VERSION,
     atomic_write_jsonl,
+    atomic_write_xml,
     build_context_draft,
     ensure_minimal_state,
     find_conversation,
@@ -106,7 +107,7 @@ def create_app(cfg: Config, url_prefix: str = "") -> Flask:
         survive disk reloads.  ``allowed_urls`` is left as-is since it
         is authoritative from disk (admin-only).
         """
-        srv = config_mod._CONFIG_YAML.setdefault("server", {})
+        srv = config_mod._CONFIG.setdefault("server", {})
         srv["stateless"] = config_mod.STATELESS_MODE
         srv["url_prefix"] = url_prefix
 
@@ -174,7 +175,7 @@ def create_app(cfg: Config, url_prefix: str = "") -> Flask:
     @app.route(url_prefix + "/server_info", methods=["GET"])
     def server_info():
         """Expose server-mode flags that do not require state access."""
-        ot = _CONFIG_YAML.get("server", {}).get("online_training", {})
+        ot = _CONFIG.get("server", {}).get("online_training", {})
         return jsonify({
             "stateless": config_mod.STATELESS_MODE,
             "url_prefix": url_prefix,
@@ -194,12 +195,12 @@ def create_app(cfg: Config, url_prefix: str = "") -> Flask:
             seed_state = ensure_minimal_state({}, strict=False)
         result["state"] = seed_state
 
-        # Normalized config (YAML-shaped with defaults + runtime server fields)
-        fresh = _load_config_yaml()
+        # Normalized config (with defaults + runtime server fields)
+        fresh = _load_config()
         if fresh:
-            config_mod._CONFIG_YAML = fresh
+            config_mod._CONFIG = fresh
             _inject_server_runtime()
-        result["config"] = _normalize_config(config_mod._CONFIG_YAML)
+        result["config"] = _normalize_config(config_mod._CONFIG)
 
         return jsonify(result)
 
@@ -287,11 +288,11 @@ def create_app(cfg: Config, url_prefix: str = "") -> Flask:
         if config_mod.STATELESS_MODE:
             runtime_cfg = body["runtime_config"]
         else:
-            fresh = _load_config_yaml()
+            fresh = _load_config()
             if fresh:
-                config_mod._CONFIG_YAML = fresh
+                config_mod._CONFIG = fresh
                 _inject_server_runtime()
-            runtime_cfg = config_mod._CONFIG_YAML
+            runtime_cfg = config_mod._CONFIG
 
         path_only = isinstance(body.get("state"), dict) and body["state"].get("_path_only", False)
 
@@ -366,7 +367,7 @@ def create_app(cfg: Config, url_prefix: str = "") -> Flask:
         else:
             filenames = body.get("files", [])
             import_files = [cfg.state_file.parent / f for f in filenames
-                          if (f.endswith(".jsonl") or f.endswith(".json"))
+                          if (f.endswith(".jsonl") or f.endswith(".json") or f.endswith(".xml"))
                           and ".." not in f and "/" not in f and "\\" not in f]
 
         base = _load_state(cfg)
@@ -394,17 +395,15 @@ def create_app(cfg: Config, url_prefix: str = "") -> Flask:
 
     @app.route(url_prefix + "/config", methods=["GET", "POST"])
     def config_endpoint():
-        """GET: normalized config (YAML-shaped).
-        POST: accept full config dict; write config.yaml to disk.
-        """
-        # Re-read config.yaml to pick up hot-reloads
-        fresh = _load_config_yaml()
+        """GET: normalized config.  POST: accept full config dict; write config.xml."""
+        # Re-read config to pick up hot-reloads
+        fresh = _load_config()
         if fresh:
-            config_mod._CONFIG_YAML = fresh
+            config_mod._CONFIG = fresh
             _inject_server_runtime()
 
         if flask_request.method == "GET":
-            return jsonify({"config": _normalize_config(config_mod._CONFIG_YAML)})
+            return jsonify({"config": _normalize_config(config_mod._CONFIG)})
         else:
             if config_mod.STATELESS_MODE:
                 return jsonify({"ok": False, "error": "Server is in stateless mode — writes disabled"}), 403
@@ -413,9 +412,10 @@ def create_app(cfg: Config, url_prefix: str = "") -> Flask:
 
             try:
                 project_root = Path(__file__).resolve().parent.parent
-                cfg_path = project_root / "config.yaml"
 
-                # Client sends { config: {...} } — the full YAML-shaped config dict
+                cfg_xml = project_root / "config.xml"
+
+                # Client sends { config: {...} } — the full config dict
                 if "config" not in body or not isinstance(body["config"], dict):
                     return jsonify({"ok": False, "error": "missing config dict"}), 400
 
@@ -425,17 +425,19 @@ def create_app(cfg: Config, url_prefix: str = "") -> Flask:
                     data["server"].pop("providers", None)
                 # Preserve the on-disk allowed_urls — clients must not
                 # override this server-level security setting.
-                disk_allowed = config_mod._CONFIG_YAML.get("server", {}).get("allowed_urls")
+                disk_allowed = config_mod._CONFIG.get("server", {}).get("allowed_urls")
                 if isinstance(data.get("server"), dict):
                     data["server"].pop("allowed_urls", None)
                 if disk_allowed is not None:
                     data.setdefault("server", {})["allowed_urls"] = disk_allowed
-                cfg_path.write_text(config_to_yaml(data), encoding="utf-8")
-                config_mod._CONFIG_YAML = _load_config_yaml()
+
+                cfg_xml.write_text(config_to_xml(data), encoding="utf-8")
+
+                config_mod._CONFIG = _load_config()
                 _inject_server_runtime()
                 PROVIDERS.clear()
                 PROVIDERS.update(_build_providers())
-                normalized = _normalize_config(config_mod._CONFIG_YAML)
+                normalized = _normalize_config(config_mod._CONFIG)
                 return jsonify({"ok": True, "config": normalized})
             except Exception as exc:
                 log.exception("POST /config failed")
@@ -474,17 +476,17 @@ def create_app(cfg: Config, url_prefix: str = "") -> Flask:
 def main() -> int:
     """Entrypoint for server startup and one-shot CLI merge execution."""
     args = parse_args()
-    # Load custom config YAML if specified (before anything reads _CONFIG_YAML).
+    # Load custom config if specified (before anything reads _CONFIG).
     if args.config:
-        reload_config_yaml(args.config)
+        reload_config(args.config)
     config_mod.DEBUG_MODE = args.debug
-    # Stateless: CLI flag > config.yaml > env var > default (False)
+    # Stateless: CLI flag > config.xml > env var > default (False)
     if args.stateless:
         config_mod.STATELESS_MODE = True
     else:
-        yaml_stateless = config_mod._CONFIG_YAML.get("server", {}).get("stateless")
-        if yaml_stateless is not None:
-            config_mod.STATELESS_MODE = bool(yaml_stateless)
+        cfg_stateless = config_mod._CONFIG.get("server", {}).get("stateless")
+        if cfg_stateless is not None:
+            config_mod.STATELESS_MODE = bool(cfg_stateless)
         else:
             config_mod.STATELESS_MODE = _env_bool("WIKIORACLE_STATELESS", False)
     cfg = load_config()
@@ -501,7 +503,10 @@ def main() -> int:
         cfg.state_file.parent.mkdir(parents=True, exist_ok=True)
         if not cfg.state_file.exists():
             initial = ensure_minimal_state({}, strict=False)
-            atomic_write_jsonl(cfg.state_file, initial, reject_symlinks=cfg.reject_symlinks)
+            if cfg.state_file.suffix.lower() == ".xml":
+                atomic_write_xml(cfg.state_file, initial, reject_symlinks=cfg.reject_symlinks)
+            else:
+                atomic_write_jsonl(cfg.state_file, initial, reject_symlinks=cfg.reject_symlinks)
 
     use_ssl = not args.no_ssl
 
@@ -534,9 +539,9 @@ def main() -> int:
     print(f"  Providers  :")
     for pi in prov_info:
         print(f"    {pi}")
-    print(f"  Config YAML: {_CONFIG_YAML_STATUS}")
+    print(f"  Config     : {_CONFIG_STATUS}")
     print(f"  Stateless  : {'ON' if config_mod.STATELESS_MODE else 'off'}")
-    ot_cfg = _CONFIG_YAML.get("server", {}).get("online_training", {})
+    ot_cfg = _CONFIG.get("server", {}).get("online_training", {})
     ot_on = ot_cfg.get("enabled", False) and not config_mod.STATELESS_MODE
     ot_device = ot_cfg.get("device", "cpu")
     if ot_on:

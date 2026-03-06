@@ -3,12 +3,14 @@
 Sections:
   - TLS certificate helpers     (_ensure_self_signed_cert)
   - Config dataclass + loader   (Config, load_config)
-  - config.yaml loader          (_load_config_yaml, _CONFIG_YAML)
+  - config.xml loader           (_load_config_xml, _load_config)
   - Provider registry           (_build_providers, PROVIDERS, _PROVIDER_MODELS)
-  - Config schema + YAML writer (CONFIG_SCHEMA, config_to_yaml)
+  - Config schema + serializer  (CONFIG_SCHEMA, config_to_xml)
   - Config normalization         (_normalize_config)
   - Module-level mode flags     (DEBUG_MODE, STATELESS_MODE, URL_PREFIX)
   - CLI argument parsing        (parse_args)
+
+Configuration is read from config.xml.
 """
 
 from __future__ import annotations
@@ -18,9 +20,11 @@ import logging
 import os
 import subprocess
 import sys
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict
+from xml.dom import minidom
 
 
 # ---------------------------------------------------------------------------
@@ -138,7 +142,7 @@ def _env_bool(name: str, default: bool) -> bool:
 def load_config() -> Config:
     """Build Config from environment variables with safe defaults."""
     state_file = Path(
-        os.environ.get("WIKIORACLE_STATE_FILE", str(Path.cwd() / "llm.jsonl"))
+        os.environ.get("WIKIORACLE_STATE_FILE", str(Path.cwd() / "state.xml"))
     ).expanduser().resolve()
 
     port = int(os.environ.get("WIKIORACLE_BIND_PORT", "8888"))
@@ -185,43 +189,137 @@ def load_config() -> Config:
 
 
 # ---------------------------------------------------------------------------
-# config.yaml loader
+# config.xml loader
 # ---------------------------------------------------------------------------
-_CONFIG_YAML_STATUS = ""  # human-readable load status for startup banner
+_CONFIG_STATUS = ""  # human-readable load status for startup banner
 
 
-def _load_config_yaml(project_root: Path | None = None) -> Dict[str, Any]:
-    """Load config.yaml from the project directory.
+def _xml_text(element: ET.Element | None) -> str:
+    """Return the stripped text content of an XML element, or '' if None."""
+    if element is None:
+        return ""
+    return (element.text or "").strip()
+
+
+def _xml_coerce(text: str):
+    """Coerce an XML text value to a Python bool, int, float, or str."""
+    if text.lower() == "true":
+        return True
+    if text.lower() == "false":
+        return False
+    try:
+        return int(text)
+    except (ValueError, TypeError):
+        pass
+    try:
+        return float(text)
+    except (ValueError, TypeError):
+        pass
+    return text
+
+
+def _load_config_xml(xml_path: Path) -> Dict[str, Any]:
+    """Parse a config.xml file into a dict.
+
+    The XML structure uses a ``<config>`` root element with ``<user>``,
+    ``<providers>``, ``<chat>``, ``<ui>``, and ``<server>`` sections.
+    Provider entries use ``<provider name="key">`` with child elements;
+    ``<display_name>`` is mapped to ``name`` in the returned dict (for
+    backward compat with the rest of the codebase).
+
+    Boolean text ``true``/``false`` is coerced to Python bools; numeric
+    text is coerced to int/float.
+    """
+    tree = ET.parse(xml_path)
+    root = tree.getroot()
+    data: Dict[str, Any] = {}
+
+    # --- user ---
+    user_el = root.find("user")
+    if user_el is not None:
+        user: Dict[str, Any] = {}
+        for child in user_el:
+            user[child.tag] = _xml_coerce(_xml_text(child))
+        data["user"] = user
+
+    # --- providers ---
+    providers_el = root.find("providers")
+    if providers_el is not None:
+        providers: Dict[str, Any] = {}
+        for prov_el in providers_el.findall("provider"):
+            prov_key = prov_el.get("name", "")
+            prov: Dict[str, Any] = {}
+            for child in prov_el:
+                tag = child.tag
+                # <display_name> maps to "name" for backward compat
+                if tag == "display_name":
+                    tag = "name"
+                prov[tag] = _xml_coerce(_xml_text(child))
+            providers[prov_key] = prov
+        data["providers"] = providers
+
+    # --- chat ---
+    chat_el = root.find("chat")
+    if chat_el is not None:
+        chat: Dict[str, Any] = {}
+        for child in chat_el:
+            chat[child.tag] = _xml_coerce(_xml_text(child))
+        data["chat"] = chat
+
+    # --- ui ---
+    ui_el = root.find("ui")
+    if ui_el is not None:
+        ui: Dict[str, Any] = {}
+        for child in ui_el:
+            ui[child.tag] = _xml_coerce(_xml_text(child))
+        data["ui"] = ui
+
+    # --- server ---
+    server_el = root.find("server")
+    if server_el is not None:
+        server: Dict[str, Any] = {}
+        for child in server_el:
+            if child.tag == "online_training":
+                ot: Dict[str, Any] = {}
+                for ot_child in child:
+                    ot[ot_child.tag] = _xml_coerce(_xml_text(ot_child))
+                server["online_training"] = ot
+            elif child.tag == "allowed_urls":
+                urls = [_xml_text(u) for u in child.findall("url") if _xml_text(u)]
+                server["allowed_urls"] = urls
+            else:
+                server[child.tag] = _xml_coerce(_xml_text(child))
+        data["server"] = server
+
+    return data
+
+
+def _load_config(project_root: Path | None = None) -> Dict[str, Any]:
+    """Load configuration from config.xml.
 
     *project_root* defaults to the parent of the bin/ directory (i.e. the
     repo root).
     """
-    global _CONFIG_YAML_STATUS
-    try:
-        import yaml
-    except ImportError:
-        _CONFIG_YAML_STATUS = "pyyaml not installed (pip install pyyaml)"
-        return {}
+    global _CONFIG_STATUS
     if project_root is None:
         project_root = Path(__file__).resolve().parent.parent
-    cfg_path = project_root / "config.yaml"
-    if not cfg_path.exists():
-        _CONFIG_YAML_STATUS = f"not found at {cfg_path}"
-        return {}
-    try:
-        with open(cfg_path) as f:
-            data = yaml.safe_load(f) or {}
-        if data:
-            _CONFIG_YAML_STATUS = f"loaded ({len(data)} keys) from {cfg_path}"
-        else:
-            _CONFIG_YAML_STATUS = f"empty or unparseable at {cfg_path}"
-        return data
-    except Exception as exc:
-        _CONFIG_YAML_STATUS = f"parse error: {exc}"
-        return {}
+    xml_path = project_root / "config.xml"
+    if xml_path.exists():
+        try:
+            data = _load_config_xml(xml_path)
+            if data:
+                _CONFIG_STATUS = f"loaded ({len(data)} keys) from {xml_path}"
+            else:
+                _CONFIG_STATUS = f"empty or unparseable at {xml_path}"
+            return data
+        except Exception as exc:
+            _CONFIG_STATUS = f"parse error: {exc}"
+    else:
+        _CONFIG_STATUS = f"not found at {xml_path}"
+    return {}
 
 
-_CONFIG_YAML: Dict[str, Any] = _load_config_yaml()
+_CONFIG: Dict[str, Any] = _load_config()
 
 
 
@@ -229,8 +327,8 @@ _CONFIG_YAML: Dict[str, Any] = _load_config_yaml()
 # Provider configuration
 # ---------------------------------------------------------------------------
 def _build_providers() -> Dict[str, Dict[str, Any]]:
-    """Construct provider registry from defaults + config.yaml overrides."""
-    yaml_providers = _CONFIG_YAML.get("providers", {})
+    """Construct provider registry from defaults + config.xml overrides."""
+    cfg_providers = _CONFIG.get("providers", {})
 
     providers: Dict[str, Dict[str, Any]] = {
         "wikioracle": {
@@ -267,8 +365,8 @@ def _build_providers() -> Dict[str, Dict[str, Any]]:
         },
     }
 
-    # Merge config.yaml values (YAML overrides defaults; env vars still win)
-    for key, ycfg in yaml_providers.items():
+    # Merge config.xml values (config overrides defaults; env vars still win)
+    for key, ycfg in cfg_providers.items():
         if not isinstance(ycfg, dict):
             continue
         if key not in providers:
@@ -282,7 +380,7 @@ def _build_providers() -> Dict[str, Dict[str, Any]]:
             pcfg["url"] = ycfg["url"]
         if ycfg.get("default_model"):
             pcfg.setdefault("default_model", ycfg["default_model"])
-        # YAML api_key fills in when no env var is set
+        # Config api_key fills in when no env var is set
         if ycfg.get("api_key") and not pcfg.get("api_key"):
             pcfg["api_key"] = ycfg["api_key"]
         if ycfg.get("timeout"):
@@ -303,10 +401,10 @@ _PROVIDER_MODELS: Dict[str, list] = {
 
 
 # ---------------------------------------------------------------------------
-# Config schema + YAML writer
+# Config schema + XML writer
 # ---------------------------------------------------------------------------
 # Ordered mapping of dotted config paths → human-readable descriptions.
-# Drives field ordering and inline comments when writing config.yaml.
+# Drives field ordering and inline comments when writing config.xml.
 CONFIG_SCHEMA = [
     ("user.name",                   "Your display name in chat messages"),
     ("user.uid",                    "Persistent user GUID (auto-generated if blank)"),
@@ -380,129 +478,142 @@ def _set_nested(data: dict, dotted: str, value) -> None:
     obj[keys[-1]] = value
 
 
-def _yaml_scalar(value) -> str:
-    """Format a single value as a YAML scalar string."""
-    if value is None:
-        return "null"
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, (int, float)):
-        return str(value)
-    s = str(value)
-    # Quote strings that could be mis-parsed or are empty
-    if not s or s in ("true", "false", "null", "yes", "no", "on", "off"):
-        return f'"{s}"'
-    if any(c in s for c in ":#{}[]&*?|>!%@`'\""):
-        return f'"{s}"'
-    return s
+def config_to_xml(data: dict) -> str:
+    """Serialize a parsed config dict to pretty-printed XML with comments.
 
+    Produces the same ``<config>`` structure that ``_load_config_xml()``
+    expects.  Uses ``xml.etree.ElementTree`` for construction and
+    ``xml.dom.minidom`` for pretty-printing.
 
-def config_to_yaml(data: dict) -> str:
-    """Serialize a parsed config dict to YAML text with schema-driven comments.
-
-    Walks CONFIG_SCHEMA in order, emitting `# description` comment lines
-    before each key.  Unknown keys in *data* are appended at the end.
-    Handles two levels of nesting (sections and sub-sections).
+    The dict key ``name`` inside each provider is written as
+    ``<display_name>`` in the XML (inverse of the load-time mapping).
     """
     if not isinstance(data, dict):
-        return ""
+        return '<?xml version="1.0" encoding="UTF-8"?>\n<config/>\n'
 
-    # Strip runtime-only field injected by _normalize_config — server.providers
-    # is metadata for UI dropdowns and must not be persisted to config.yaml.
-    data = dict(data)  # shallow copy to avoid mutating caller's dict
+    # Strip runtime-only field injected by _normalize_config
+    data = dict(data)
     srv = data.get("server")
     if isinstance(srv, dict):
         srv = dict(srv)
         srv.pop("providers", None)
         data["server"] = srv
 
-    lines: list[str] = []
-    emitted: set[str] = set()  # Track dotted paths already written
+    # Build a description lookup from CONFIG_SCHEMA
+    desc_map: Dict[str, str] = {dotted: desc for dotted, desc in CONFIG_SCHEMA}
 
-    # Group schema entries by top-level section
-    current_section = None
+    root = ET.Element("config")
 
-    for dotted, description in CONFIG_SCHEMA:
-        parts = dotted.split(".")
-        top = parts[0]
-        value, found = _get_nested(data, dotted)
+    def _val_str(value) -> str:
+        """Convert a Python value to its XML text representation."""
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        if value is None:
+            return ""
+        return str(value)
 
-        # Skip entries not present in data (don't emit defaults)
-        if not found:
-            continue
+    def _add_comment(parent: ET.Element, text: str) -> None:
+        """Append an XML comment to *parent*.
 
-        # Top-level section header (1-part path like "server" or "providers")
-        if len(parts) == 1:
-            if current_section is not None:
-                lines.append("")
-            current_section = top
-            lines.append(f"{top}:  # {description}")
-            emitted.add(top)
-            continue
+        Double-dashes (``--``) are illegal inside XML comments, so they
+        are replaced with en-dashes to keep the output well-formed.
+        """
+        safe = text.replace("--", "\u2013")  # en-dash
+        parent.append(ET.Comment(f" {safe} "))
 
-        # Section break
-        if top != current_section:
-            if current_section is not None:
-                lines.append("")  # blank line between sections
-            current_section = top
+    # --- user ---
+    user_data = data.get("user")
+    if isinstance(user_data, dict):
+        _add_comment(root, "User")
+        user_el = ET.SubElement(root, "user")
+        for key, val in user_data.items():
+            desc = desc_map.get(f"user.{key}")
+            if desc:
+                _add_comment(user_el, desc)
+            child = ET.SubElement(user_el, key)
+            child.text = _val_str(val)
 
-            # Handle top-level simple keys (e.g. "user.name" → emit "user:" header)
-            if len(parts) == 2 and parts[0] not in ("providers", "ssh"):
-                # Simple section: user, chat, ui
-                section_data, _ = _get_nested(data, top)
-                if isinstance(section_data, dict):
-                    lines.append(f"{top}:")
-                    emitted.add(top)
+    # --- providers ---
+    providers_data = data.get("providers")
+    if isinstance(providers_data, dict):
+        _add_comment(root, "LLM provider configuration")
+        providers_el = ET.SubElement(root, "providers")
+        for prov_key, prov_cfg in providers_data.items():
+            if not isinstance(prov_cfg, dict):
+                continue
+            desc = desc_map.get(f"providers.{prov_key}.name")
+            if desc:
+                _add_comment(providers_el, desc)
+            prov_el = ET.SubElement(providers_el, "provider")
+            prov_el.set("name", prov_key)
+            for field_key, field_val in prov_cfg.items():
+                # "name" in dict -> <display_name> in XML
+                xml_tag = "display_name" if field_key == "name" else field_key
+                desc = desc_map.get(f"providers.{prov_key}.{field_key}")
+                if desc:
+                    _add_comment(prov_el, desc)
+                child = ET.SubElement(prov_el, xml_tag)
+                child.text = _val_str(field_val)
 
-        # Emit the actual key with comment
-        if len(parts) == 2:
-            # e.g. user.name → "  name: User  # description"
-            key = parts[1]
-            lines.append(f"  {key}: {_yaml_scalar(value)}  # {description}")
-            emitted.add(dotted)
-        elif len(parts) == 3:
-            # e.g. providers.openai.name or chat.retrieval.max_entries
-            section, subsec, key = parts
-            # Ensure section header exists
-            if section not in emitted:
-                lines.append(f"{section}:")
-                emitted.add(section)
-            # Ensure subsection header exists
-            subsec_path = f"{section}.{subsec}"
-            if subsec_path not in emitted:
-                lines.append(f"  {subsec}:")
-                emitted.add(subsec_path)
-            lines.append(f"    {key}: {_yaml_scalar(value)}  # {description}")
-            emitted.add(dotted)
-        elif len(parts) == 4:
-            section, sub1, sub2, key = parts
-            if section not in emitted:
-                lines.append(f"{section}:")
-                emitted.add(section)
-            sub1_path = f"{section}.{sub1}"
-            if sub1_path not in emitted:
-                lines.append(f"  {sub1}:")
-                emitted.add(sub1_path)
-            sub2_path = f"{section}.{sub1}.{sub2}"
-            if sub2_path not in emitted:
-                lines.append(f"    {sub2}:")
-                emitted.add(sub2_path)
-            lines.append(f"      {key}: {_yaml_scalar(value)}  # {description}")
-            emitted.add(dotted)
+    # --- chat ---
+    chat_data = data.get("chat")
+    if isinstance(chat_data, dict):
+        _add_comment(root, "Chat settings")
+        chat_el = ET.SubElement(root, "chat")
+        for key, val in chat_data.items():
+            desc = desc_map.get(f"chat.{key}")
+            if desc:
+                _add_comment(chat_el, desc)
+            child = ET.SubElement(chat_el, key)
+            child.text = _val_str(val)
 
-    # Append any unknown top-level keys not covered by schema
-    for key in data:
-        if key not in emitted and key not in {p.split(".")[0] for p in emitted}:
-            lines.append("")
-            try:
-                import yaml
-                chunk = yaml.dump({key: data[key]}, default_flow_style=False, allow_unicode=True)
-                lines.append(f"# (unrecognized section)")
-                lines.append(chunk.rstrip())
-            except ImportError:
-                lines.append(f"# {key}: (yaml module not available)")
-            emitted.add(key)
+    # --- ui ---
+    ui_data = data.get("ui")
+    if isinstance(ui_data, dict):
+        _add_comment(root, "UI defaults")
+        ui_el = ET.SubElement(root, "ui")
+        for key, val in ui_data.items():
+            desc = desc_map.get(f"ui.{key}")
+            if desc:
+                _add_comment(ui_el, desc)
+            child = ET.SubElement(ui_el, key)
+            child.text = _val_str(val)
 
+    # --- server ---
+    server_data = data.get("server")
+    if isinstance(server_data, dict):
+        _add_comment(root, "Runtime parameters (usually set via CLI flags)")
+        server_el = ET.SubElement(root, "server")
+        for key, val in server_data.items():
+            if key == "online_training" and isinstance(val, dict):
+                _add_comment(server_el, "Online learning from interactions (see doc/Training.md)")
+                ot_el = ET.SubElement(server_el, "online_training")
+                for ot_key, ot_val in val.items():
+                    desc = desc_map.get(f"server.online_training.{ot_key}")
+                    if desc:
+                        _add_comment(ot_el, desc)
+                    child = ET.SubElement(ot_el, ot_key)
+                    child.text = _val_str(ot_val)
+            elif key == "allowed_urls" and isinstance(val, list):
+                _add_comment(server_el, "URL prefixes allowed for authority/provider fetches")
+                urls_el = ET.SubElement(server_el, "allowed_urls")
+                for url_str in val:
+                    url_child = ET.SubElement(urls_el, "url")
+                    url_child.text = str(url_str)
+            else:
+                desc = desc_map.get(f"server.{key}")
+                if desc:
+                    _add_comment(server_el, desc)
+                child = ET.SubElement(server_el, key)
+                child.text = _val_str(val)
+
+    # Pretty-print with minidom
+    rough_xml = ET.tostring(root, encoding="unicode", xml_declaration=False)
+    dom = minidom.parseString(rough_xml)
+    pretty = dom.toprettyxml(indent="  ", encoding=None)
+    # minidom adds its own <?xml …?> declaration — keep it.
+    # Strip trailing whitespace from each line.
+    lines = [line.rstrip() for line in pretty.splitlines()]
     return "\n".join(lines) + "\n"
 
 
@@ -533,19 +644,19 @@ def _default_allowed_urls() -> list:
 def get_allowed_urls() -> list:
     """Return the allowed URL prefixes for authority/provider fetches.
 
-    Checks the in-memory ``_CONFIG_YAML`` first, then falls back to
-    re-reading config.yaml from disk (so admin edits take effect without
+    Checks the in-memory ``_CONFIG`` first, then falls back to
+    re-reading config.xml from disk (so admin edits take effect without
     a server restart).  If neither source has ``allowed_urls``, returns
     the built-in defaults.
     """
-    urls = _CONFIG_YAML.get("server", {}).get("allowed_urls")
+    urls = _CONFIG.get("server", {}).get("allowed_urls")
     if not urls:
-        # Re-read disk in case config.yaml was edited after server start.
-        fresh = _load_config_yaml()
+        # Re-read disk in case config.xml was edited after server start.
+        fresh = _load_config()
         urls = fresh.get("server", {}).get("allowed_urls")
     if not urls:
         return _default_allowed_urls()
-    # Guard against YAML parsing the list as a string (e.g. quoted inline).
+    # Guard against the list being parsed as a string.
     if isinstance(urls, str):
         import ast
         try:
@@ -583,15 +694,14 @@ def is_url_allowed(url: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Config normalization (fill defaults, keep YAML shape)
+# Config normalization (fill defaults)
 # ---------------------------------------------------------------------------
-def _normalize_config(cfg_yaml: dict) -> dict:
+def _normalize_config(cfg_data: dict) -> dict:
     """Ensure all expected fields exist with defaults in a config dict.
 
-    The returned dict has the same shape as config.yaml — no flattening or
-    renaming.  Missing sections/keys are filled with sensible defaults.
+    Missing sections/keys are filled with sensible defaults.
     """
-    cfg = dict(cfg_yaml) if isinstance(cfg_yaml, dict) else {}
+    cfg = dict(cfg_data) if isinstance(cfg_data, dict) else {}
     user = cfg.setdefault("user", {})
     user.setdefault("name", "User")
     user.setdefault("uid", "")
@@ -644,37 +754,31 @@ URL_PREFIX: str = ""
 # ---------------------------------------------------------------------------
 # CLI argument parsing
 # ---------------------------------------------------------------------------
-def reload_config_yaml(path: str | Path | None = None) -> Dict[str, Any]:
-    """Reload config.yaml from *path* (or the default location).
+def reload_config(path: str | Path | None = None) -> Dict[str, Any]:
+    """Reload configuration from *path* (or the default config.xml).
 
-    Replaces the module-level ``_CONFIG_YAML`` and re-populates
+    Replaces the module-level ``_CONFIG`` and re-populates
     ``PROVIDERS`` so the server picks up the new file immediately.
     Returns the new config dict.
     """
-    global _CONFIG_YAML
+    global _CONFIG
     if path is not None:
-        _CONFIG_YAML = _load_config_yaml(Path(path).resolve().parent)
-        # _load_config_yaml looks for config.yaml in the given directory,
-        # so we need the file itself to be named config.yaml — or we read
-        # it directly.
-        import yaml as _yaml
         p = Path(path)
-        if p.is_file():
-            with open(p) as f:
-                data = _yaml.safe_load(f) or {}
-            _CONFIG_YAML = data
+        if p.suffix == ".xml" and p.is_file():
+            _CONFIG = _load_config_xml(p)
+        else:
+            _CONFIG = _load_config(p.resolve().parent if p.is_file() else p.resolve())
     else:
-        _CONFIG_YAML = _load_config_yaml()
-    # Re-populate PROVIDERS from the fresh config
+        _CONFIG = _load_config()
     _populate_providers()
-    return _CONFIG_YAML
+    return _CONFIG
 
 
 def _populate_providers() -> None:
-    """Refresh the module-level PROVIDERS dict from _CONFIG_YAML."""
-    yaml_providers = _CONFIG_YAML.get("providers", {})
+    """Refresh the module-level PROVIDERS dict from _CONFIG."""
+    cfg_providers = _CONFIG.get("providers", {})
     PROVIDERS.clear()
-    for key, prov in yaml_providers.items():
+    for key, prov in cfg_providers.items():
         PROVIDERS[key] = {
             "name": prov.get("name", key),
             "url": prov.get("url", ""),
@@ -687,7 +791,7 @@ def parse_args() -> argparse.Namespace:
     """Parse command-line arguments for serve/merge execution modes."""
     parser = argparse.ArgumentParser(description="WikiOracle local shim")
     parser.add_argument("--config", default=None,
-                        help="Path to config YAML file (default: config.yaml in project root)")
+                        help="Path to config.xml file (default: config.xml in project root)")
     parser.add_argument("--debug", action="store_true", help="Enable verbose debug logging")
     parser.add_argument("--stateless", action="store_true",
                         help="Run in stateless mode (no writes to disk; editors disabled)")

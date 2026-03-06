@@ -1,10 +1,13 @@
 """WikiOracle state management: data model, I/O, conversation tree, merge logic.
 
 State data model and persistence:
-  - JSONL serialization and deserialization of conversation state
+  - XML and JSONL serialization and deserialization of conversation state
   - Conversation tree structure and traversal
   - State merging logic for multi-branch conversations
   - Snapshot and session management utilities
+
+The canonical state format is XML ("WikiOracle State").  JSONL is retained
+for backward compatibility and migration.
 """
 
 from __future__ import annotations
@@ -17,6 +20,7 @@ import os
 import re
 import tempfile
 import uuid
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional
@@ -223,10 +227,10 @@ def ensure_minimal_state(raw: Any, *, strict: bool = False) -> dict:
     state["truth"] = [_normalize_trust_entry(v) for v in raw_truth]
 
     # User GUID — deterministic pseudonymous identity stored at root level.
-    # Derived from user.name in config.yaml when available; preserved if
-    # already present in the state (e.g. round-tripping through JSONL).
+    # Derived from user.name in config.xml when available; preserved if
+    # already present in the state (e.g. round-tripping through XML).
     if not state.get("user_guid"):
-        # We can't access config.yaml here (truth.py has no config dep),
+        # We can't access config.xml here (truth.py has no config dep),
         # so user_guid is populated later by the pipeline (response.py).
         # If already set on the raw input, preserve it.
         pass
@@ -414,7 +418,15 @@ def jsonl_to_state(text: str) -> dict:
 
 def load_state_file(path: Path, *, strict: bool = True, max_bytes: int | None = None,
                     reject_symlinks: bool = False) -> dict:
-    """Load state from a .jsonl (or legacy .json) file."""
+    """Load state from an .xml, .jsonl, or legacy .json file.
+
+    Auto-detects format by file extension and content:
+      - ``.xml`` → ``xml_to_state()``
+      - ``.jsonl`` → ``jsonl_to_state()``
+      - ``.json`` (legacy) → ``json.loads()`` → ``ensure_minimal_state()``
+      - Content starting with ``<?xml`` or ``<state`` → XML
+      - Content starting with ``{`` → legacy JSON or JSONL
+    """
     if reject_symlinks and path.is_symlink():
         raise StateValidationError("State file cannot be a symlink")
 
@@ -429,6 +441,13 @@ def load_state_file(path: Path, *, strict: bool = True, max_bytes: int | None = 
         return ensure_minimal_state({}, strict=False)
 
     stripped = data.strip()
+
+    # XML detection: by extension or content
+    if path.suffix.lower() == ".xml" or stripped.startswith("<?xml") or stripped.startswith("<state"):
+        state = xml_to_state(data)
+        return ensure_minimal_state(state, strict=strict)
+
+    # Legacy monolithic JSON
     if stripped.startswith("{"):
         try:
             obj = json.loads(stripped)
@@ -437,6 +456,7 @@ def load_state_file(path: Path, *, strict: bool = True, max_bytes: int | None = 
         except json.JSONDecodeError:
             pass
 
+    # JSONL
     state = jsonl_to_state(data)
     return ensure_minimal_state(state, strict=strict)
 
@@ -469,6 +489,313 @@ def atomic_write_json(path: Path, payload: dict) -> None:
         with os.fdopen(fd, "w", encoding="utf-8") as tmp:
             json.dump(payload, tmp, ensure_ascii=False, indent=2)
             tmp.write("\n")
+            tmp.flush()
+            os.fsync(tmp.fileno())
+        os.replace(tmp_name, str(path))
+    finally:
+        if os.path.exists(tmp_name):
+            os.remove(tmp_name)
+
+
+# ---------------------------------------------------------------------------
+# XML I/O  (WikiOracle State format)
+# ---------------------------------------------------------------------------
+
+def _indent_xml(elem: ET.Element, level: int = 0) -> None:
+    """Add indentation whitespace to an ElementTree for pretty-printing."""
+    indent = "\n" + "  " * level
+    if len(elem):
+        if not elem.text or not elem.text.strip():
+            elem.text = indent + "  "
+        if not elem.tail or not elem.tail.strip():
+            elem.tail = indent
+        for child in elem:
+            _indent_xml(child, level + 1)
+        if not child.tail or not child.tail.strip():
+            child.tail = indent
+    else:
+        if level and (not elem.tail or not elem.tail.strip()):
+            elem.tail = indent
+
+
+def _xml_escape(text: str) -> str:
+    """Escape text for safe embedding in XML element text."""
+    if not text:
+        return ""
+    return html.escape(text, quote=False)
+
+
+def _set_xhtml_content(parent: ET.Element, tag: str, xhtml_str: str) -> None:
+    """Add an element with XHTML content.
+
+    XHTML fragments may contain child elements, so we parse them
+    and attach as subelements.  If parsing fails, fall back to text.
+    """
+    el = ET.SubElement(parent, tag)
+    if not xhtml_str or not xhtml_str.strip() or xhtml_str.strip() == "<div/>":
+        el.text = ""
+        return
+    try:
+        wrapper = ET.fromstring(f"<_w>{xhtml_str}</_w>")
+        el.text = wrapper.text or ""
+        for child in wrapper:
+            el.append(child)
+    except ET.ParseError:
+        el.text = xhtml_str
+
+
+def _get_xhtml_content(el: ET.Element) -> str:
+    """Extract XHTML content from an element (text + child elements)."""
+    if el is None:
+        return ""
+    parts = []
+    if el.text:
+        parts.append(el.text)
+    for child in el:
+        parts.append(ET.tostring(child, encoding="unicode", method="xml"))
+        if child.tail:
+            parts.append(child.tail)
+    return "".join(parts).strip() or ""
+
+
+def _conv_to_xml(conv: dict, parent_el: ET.Element) -> None:
+    """Recursively serialize a conversation dict to XML elements."""
+    conv_el = ET.SubElement(parent_el, "conversation")
+    conv_el.set("id", conv.get("id", ""))
+    pid = conv.get("parentId")
+    if pid is not None:
+        if isinstance(pid, list):
+            conv_el.set("parentId", ",".join(pid))
+        else:
+            conv_el.set("parentId", str(pid))
+
+    title_el = ET.SubElement(conv_el, "title")
+    title_el.text = conv.get("title", "(untitled)")
+
+    msgs_el = ET.SubElement(conv_el, "messages")
+    for msg in conv.get("messages", []):
+        msg_el = ET.SubElement(msgs_el, "message")
+        msg_el.set("id", msg.get("id", ""))
+        msg_el.set("role", msg.get("role", "user"))
+        msg_el.set("username", msg.get("username", "Unknown"))
+        msg_el.set("time", msg.get("time", ""))
+        _set_xhtml_content(msg_el, "content", msg.get("content", ""))
+
+    children = conv.get("children", [])
+    if children:
+        children_el = ET.SubElement(conv_el, "children")
+        for child_conv in children:
+            _conv_to_xml(child_conv, children_el)
+
+
+def _conv_from_xml(conv_el: ET.Element) -> dict:
+    """Recursively deserialize a conversation XML element to dict."""
+    conv = {
+        "id": conv_el.get("id", ""),
+        "title": "",
+        "messages": [],
+        "children": [],
+    }
+    pid = conv_el.get("parentId")
+    if pid is not None:
+        if "," in pid:
+            conv["parentId"] = [p.strip() for p in pid.split(",")]
+        else:
+            conv["parentId"] = pid
+
+    title_el = conv_el.find("title")
+    if title_el is not None and title_el.text:
+        conv["title"] = title_el.text
+
+    msgs_el = conv_el.find("messages")
+    if msgs_el is not None:
+        for msg_el in msgs_el.findall("message"):
+            content_el = msg_el.find("content")
+            msg = {
+                "id": msg_el.get("id", ""),
+                "role": msg_el.get("role", "user"),
+                "username": msg_el.get("username", "Unknown"),
+                "time": msg_el.get("time", ""),
+                "content": _get_xhtml_content(content_el) if content_el is not None else "",
+            }
+            conv["messages"].append(msg)
+
+    children_el = conv_el.find("children")
+    if children_el is not None:
+        for child_el in children_el.findall("conversation"):
+            conv["children"].append(_conv_from_xml(child_el))
+
+    return conv
+
+
+def state_to_xml(state: dict) -> str:
+    """Convert a state dict to XML string (WikiOracle State format).
+
+    Conversations nest naturally in XML — no flatten/unflatten needed.
+    Truth entries serialize with their XHTML content preserved.
+    """
+    root = ET.Element("state")
+
+    # -- Header --
+    header_el = ET.SubElement(root, "header")
+
+    ver_el = ET.SubElement(header_el, "version")
+    ver_el.text = str(state.get("version", STATE_VERSION))
+
+    schema_el = ET.SubElement(header_el, "schema")
+    schema_el.text = state.get("schema", SCHEMA_URL)
+
+    time_el = ET.SubElement(header_el, "time")
+    time_el.text = state.get("time", utc_now_iso())
+
+    title_el = ET.SubElement(header_el, "title")
+    title_el.text = state.get("title", "WikiOracle")
+
+    _set_xhtml_content(header_el, "context", state.get("context", "<div/>"))
+
+    sel = state.get("selected_conversation")
+    if sel is not None:
+        sel_el = ET.SubElement(header_el, "selected_conversation")
+        sel_el.text = str(sel)
+
+    uguid = state.get("user_guid")
+    if uguid:
+        guid_el = ET.SubElement(header_el, "user_guid")
+        guid_el.text = str(uguid)
+
+    output = state.get("output")
+    if output:
+        output_el = ET.SubElement(header_el, "output")
+        output_el.text = str(output)
+
+    # -- Conversations --
+    convs_el = ET.SubElement(root, "conversations")
+    for conv in state.get("conversations", []):
+        _conv_to_xml(conv, convs_el)
+
+    # -- Truth --
+    truth_el = ET.SubElement(root, "truth")
+    for entry in (state.get("truth") or []):
+        entry_el = ET.SubElement(truth_el, "entry")
+        entry_el.set("id", str(entry.get("id", "")))
+        if entry.get("title"):
+            entry_el.set("title", str(entry["title"]))
+        trust_val = entry.get("trust")
+        if trust_val is not None:
+            entry_el.set("trust", str(trust_val))
+        if entry.get("time"):
+            entry_el.set("time", str(entry["time"]))
+        if entry.get("arg1"):
+            entry_el.set("arg1", str(entry["arg1"]))
+        if entry.get("arg2"):
+            entry_el.set("arg2", str(entry["arg2"]))
+        _set_xhtml_content(entry_el, "content", entry.get("content", ""))
+
+    _indent_xml(root)
+    xml_str = ET.tostring(root, encoding="unicode", method="xml")
+    return f'<?xml version="1.0" encoding="UTF-8"?>\n{xml_str}\n'
+
+
+def xml_to_state(text: str) -> dict:
+    """Parse an XML string (WikiOracle State format) into a state dict."""
+    state = {
+        "version": STATE_VERSION,
+        "schema": SCHEMA_URL,
+        "time": utc_now_iso(),
+        "context": "<div/>",
+        "conversations": [],
+        "truth": [],
+        "selected_conversation": None,
+    }
+
+    try:
+        root = ET.fromstring(text)
+    except ET.ParseError:
+        return state
+
+    if root.tag != "state":
+        return state
+
+    # -- Header --
+    header_el = root.find("header")
+    if header_el is not None:
+        ver_el = header_el.find("version")
+        if ver_el is not None and ver_el.text:
+            try:
+                state["version"] = int(ver_el.text)
+            except ValueError:
+                pass
+        schema_el = header_el.find("schema")
+        if schema_el is not None and schema_el.text:
+            state["schema"] = schema_el.text
+        time_el = header_el.find("time")
+        if time_el is not None and time_el.text:
+            state["time"] = time_el.text
+        title_el = header_el.find("title")
+        if title_el is not None and title_el.text:
+            state["title"] = title_el.text
+        context_el = header_el.find("context")
+        if context_el is not None:
+            state["context"] = _get_xhtml_content(context_el) or "<div/>"
+        sel_el = header_el.find("selected_conversation")
+        if sel_el is not None and sel_el.text:
+            state["selected_conversation"] = sel_el.text
+        guid_el = header_el.find("user_guid")
+        if guid_el is not None and guid_el.text:
+            state["user_guid"] = guid_el.text
+        output_el = header_el.find("output")
+        if output_el is not None and output_el.text:
+            state["output"] = output_el.text.strip()
+
+    # -- Conversations --
+    convs_el = root.find("conversations")
+    if convs_el is not None:
+        for conv_el in convs_el.findall("conversation"):
+            state["conversations"].append(_conv_from_xml(conv_el))
+
+    # -- Truth --
+    truth_el = root.find("truth")
+    if truth_el is not None:
+        for entry_el in truth_el.findall("entry"):
+            entry = {
+                "id": entry_el.get("id", ""),
+            }
+            if entry_el.get("title"):
+                entry["title"] = entry_el.get("title")
+            trust_str = entry_el.get("trust")
+            if trust_str is not None:
+                try:
+                    entry["trust"] = float(trust_str)
+                except ValueError:
+                    entry["trust"] = None
+            if entry_el.get("time"):
+                entry["time"] = entry_el.get("time")
+            if entry_el.get("arg1"):
+                entry["arg1"] = entry_el.get("arg1")
+            if entry_el.get("arg2"):
+                entry["arg2"] = entry_el.get("arg2")
+            content_el = entry_el.find("content")
+            if content_el is not None:
+                entry["content"] = _get_xhtml_content(content_el)
+            else:
+                entry["content"] = ""
+            state["truth"].append(entry)
+
+    return state
+
+
+def atomic_write_xml(path: Path, state: dict, *, reject_symlinks: bool = False) -> None:
+    """Write state to an XML file atomically (WikiOracle State format)."""
+    if reject_symlinks and path.exists() and path.is_symlink():
+        raise StateValidationError("Refusing to write symlink state file")
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    content = state_to_xml(state)
+
+    fd, tmp_name = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=str(path.parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as tmp:
+            tmp.write(content)
             tmp.flush()
             os.fsync(tmp.fileno())
         os.replace(tmp_name, str(path))

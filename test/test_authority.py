@@ -2,7 +2,7 @@
 """Unit tests for the authority trust entry type.
 
 Tests parsing, ID generation, resolution (fetch + trust scaling),
-caching, security constraints, and integration with hme.jsonl test data.
+caching, security constraints, and integration with hme.xml test data.
 """
 
 import json
@@ -333,26 +333,21 @@ def test_resolve_authority_url_scheme_restriction():
     assert results[0][1] == []  # rejected, empty list
 
 
-# ─── Integration with hme.jsonl ───
+# ─── Integration with hme.xml ───
 
 
-def test_hme_jsonl_authority_entry():
-    """Load data/hme.jsonl and verify it contains an authority entry."""
-    hme_path = os.path.join(os.path.dirname(__file__), "..", "data", "hme.jsonl")
+def test_hme_xml_authority_entry():
+    """Load test/hme.xml and verify it contains an authority entry."""
+    hme_path = os.path.join(os.path.dirname(__file__), "hme.xml")
     if not os.path.exists(hme_path):
         return  # skip if file not present
 
-    with open(hme_path) as f:
-        entries = []
-        for line in f:
-            line = line.strip()
-            if line:
-                rec = json.loads(line)
-                if rec.get("type") in ("truth", "trust"):
-                    entries.append(rec)
+    from state import load_state_file
+    state = load_state_file(hme_path, strict=True)
+    entries = state.get("truth", [])
 
     authority_entries = get_authority_entries(entries)
-    assert len(authority_entries) >= 1, "Expected at least one authority entry in hme.jsonl"
+    assert len(authority_entries) >= 1, "Expected at least one authority entry in hme.xml"
 
     # Verify the test authority
     test_auth = None
@@ -360,39 +355,28 @@ def test_hme_jsonl_authority_entry():
         if entry.get("id") == "auth_test_01":
             test_auth = (entry, config)
             break
-    assert test_auth is not None, "auth_test_01 not found in hme.jsonl"
+    assert test_auth is not None, "auth_test_01 not found in hme.xml"
     assert test_auth[0]["trust"] == 0.5
     assert "hme_authority_fragment" in test_auth[1]["url"]
 
 
 def test_hme_authority_resolution():
-    """Resolve the test authority from hme.jsonl against the fragment file."""
+    """Resolve the test authority from hme.xml against the fragment file."""
     _AUTHORITY_CACHE.clear()
-    hme_path = os.path.join(os.path.dirname(__file__), "..", "data", "hme.jsonl")
-    fragment_path = os.path.join(os.path.dirname(__file__), "..", "data", "hme_authority_fragment.jsonl")
+    hme_path = os.path.join(os.path.dirname(__file__), "hme.xml")
+    fragment_path = os.path.join(os.path.dirname(__file__), "hme_authority_fragment.xml")
     if not os.path.exists(hme_path) or not os.path.exists(fragment_path):
         return  # skip if files not present
 
-    # Load fragment entries to use as mock return value.
-    # The fragment file may use "trust" key — no normalization needed.
-    # Just load entries as-is.
-    fragment_entries = []
-    with open(fragment_path) as f:
-        for line in f:
-            line = line.strip()
-            if line:
-                rec = json.loads(line)
-                if rec.get("type") in ("truth", "trust"):
-                    fragment_entries.append(rec)
+    from state import load_state_file
 
-    with open(hme_path) as f:
-        entries = []
-        for line in f:
-            line = line.strip()
-            if line:
-                rec = json.loads(line)
-                if rec.get("type") in ("truth", "trust"):
-                    entries.append(rec)
+    # Load fragment entries to use as mock return value.
+    fragment_state = load_state_file(fragment_path, strict=False)
+    fragment_entries = fragment_state.get("truth", [])
+
+    # Load hme state
+    hme_state = load_state_file(hme_path, strict=True)
+    entries = hme_state.get("truth", [])
 
     authority_entries = get_authority_entries(entries)
 

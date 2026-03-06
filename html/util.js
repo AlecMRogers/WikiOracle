@@ -521,9 +521,9 @@ async function saveSettings() {
   if (typeof renderMessages === "function") renderMessages();
 }
 
-// ─── Config editor (edit config.yaml) ───
-// Uses js-yaml (loaded via CDN) for client-side YAML ↔ JSON conversion.
-// Server never sees raw YAML — only parsed dicts via POST /config.
+// ─── Config editor (edit config.xml) ───
+// Uses js-yaml (loaded via CDN) for the editor UI.
+// Server never sees raw text — only parsed dicts via POST /config.
 async function _openConfigEditor() {
   // Close the settings panel first
   closeSettings();
@@ -538,7 +538,7 @@ async function _openConfigEditor() {
           <button class="btn" id="cfgCancel">Cancel</button>
           <button class="btn btn-primary" id="cfgOk">OK</button>
         </div>`;
-    var dlg = _createDialog("configOverlay", "config.yaml", body, "config-panel");
+    var dlg = _createDialog("configOverlay", "config.xml", body, "config-panel");
     overlay = dlg.overlay;
 
     document.getElementById("cfgReset").addEventListener("click", function() {
@@ -557,7 +557,7 @@ async function _openConfigEditor() {
       try {
         parsed = jsyaml.load(textarea.value);
         if (parsed !== null && typeof parsed !== "object") {
-          errEl.textContent = "config.yaml must be a YAML mapping";
+          errEl.textContent = "Config must be a valid mapping";
           errEl.style.display = "block";
           return;
         }
@@ -595,11 +595,11 @@ async function _openConfigEditor() {
       dlg.close();
       applyTheme(config.ui.theme);
       await _refreshProviderMeta();
-      setStatus("config.yaml saved");
+      setStatus("config.xml saved");
     });
   }
 
-  // Load current config as YAML text
+  // Load current config as text
   const textarea = document.getElementById("configEditorTextarea");
   const errEl = document.getElementById("configEditorError");
   errEl.style.display = "none";

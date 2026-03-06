@@ -26,7 +26,7 @@ from truth import (
 )
 
 
-SPEC_DIR = Path(__file__).resolve().parent.parent / "data"
+SPEC_DIR = Path(__file__).resolve().parent
 
 
 # ---------------------------------------------------------------------------
@@ -63,17 +63,11 @@ def _make_provider_entry(name, entry_id, trust=0.8, authority_url="", prelim=Tru
 
 
 def _load_truth_entries(filename):
-    """Load truth entries from a spec JSONL file."""
+    """Load truth entries from a spec XML file."""
+    from state import load_state_file
     path = SPEC_DIR / filename
-    entries = []
-    for line in path.read_text().splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        rec = json.loads(line)
-        if rec.get("type") == "truth":
-            entries.append(rec)
-    return entries
+    state = load_state_file(path, strict=True)
+    return state.get("truth", [])
 
 
 # ---------------------------------------------------------------------------
@@ -405,31 +399,31 @@ class TestSpecFiles(unittest.TestCase):
     """Verify the alpha/beta1/beta2 spec files parse correctly."""
 
     def test_alpha_has_two_provider_betas(self):
-        """alpha.jsonl contains provider entries pointing to beta1 and beta2."""
-        entries = _load_truth_entries("alpha.jsonl")
+        """alpha.xml contains provider entries pointing to beta1 and beta2."""
+        entries = _load_truth_entries("alpha.xml")
         providers = get_provider_entries(entries)
         self.assertEqual(len(providers), 2)
         ids = {p[0]["id"] for p in providers}
         self.assertEqual(ids, {"provider_beta1", "provider_beta2"})
 
     def test_alpha_has_own_facts(self):
-        """alpha.jsonl has facts that beta1/beta2 don't have."""
-        entries = _load_truth_entries("alpha.jsonl")
+        """alpha.xml has facts that beta1/beta2 don't have."""
+        entries = _load_truth_entries("alpha.xml")
         fact_titles = {e["title"] for e in entries
                        if "<fact" in e.get("content", "")}
         self.assertIn("Capital of France", fact_titles)
         self.assertIn("France is in Europe", fact_titles)
 
     def test_beta1_has_provider_alpha(self):
-        """beta1.jsonl contains a provider entry pointing to alpha."""
-        entries = _load_truth_entries("beta1.jsonl")
+        """beta1.xml contains a provider entry pointing to alpha."""
+        entries = _load_truth_entries("beta1.xml")
         providers = get_provider_entries(entries)
         self.assertEqual(len(providers), 1)
         self.assertEqual(providers[0][0]["id"], "provider_alpha")
 
     def test_beta1_has_own_facts(self):
-        """beta1.jsonl has its own facts (Eiffel Tower)."""
-        entries = _load_truth_entries("beta1.jsonl")
+        """beta1.xml has its own facts (Eiffel Tower)."""
+        entries = _load_truth_entries("beta1.xml")
         fact_titles = {e["title"] for e in entries
                        if "<fact" in e.get("content", "")}
         self.assertIn("Eiffel Tower location", fact_titles)
@@ -437,15 +431,15 @@ class TestSpecFiles(unittest.TestCase):
         self.assertIn("Eiffel Tower material", fact_titles)
 
     def test_beta2_has_provider_alpha(self):
-        """beta2.jsonl contains a provider entry pointing to alpha."""
-        entries = _load_truth_entries("beta2.jsonl")
+        """beta2.xml contains a provider entry pointing to alpha."""
+        entries = _load_truth_entries("beta2.xml")
         providers = get_provider_entries(entries)
         self.assertEqual(len(providers), 1)
         self.assertEqual(providers[0][0]["id"], "provider_alpha")
 
     def test_beta2_has_own_facts(self):
-        """beta2.jsonl has its own facts (Louvre)."""
-        entries = _load_truth_entries("beta2.jsonl")
+        """beta2.xml has its own facts (Louvre)."""
+        entries = _load_truth_entries("beta2.xml")
         fact_titles = {e["title"] for e in entries
                        if "<fact" in e.get("content", "")}
         self.assertIn("Louvre Museum location", fact_titles)
@@ -453,7 +447,7 @@ class TestSpecFiles(unittest.TestCase):
 
     def test_mutual_reference_cycle_scenario(self):
         """alpha→beta1, beta1→alpha: alpha is silenced when in call chain."""
-        beta_entries = _load_truth_entries("beta1.jsonl")
+        beta_entries = _load_truth_entries("beta1.xml")
         beta_providers = get_provider_entries(beta_entries)
         alpha_entry = beta_providers[0]  # beta's reference to alpha
 
@@ -471,9 +465,9 @@ class TestSpecFiles(unittest.TestCase):
         Alpha calls beta1 and beta2. Both betas reference alpha back.
         Alpha should be silenced in both betas' nested votes.
         """
-        alpha_entries = _load_truth_entries("alpha.jsonl")
-        beta1_entries = _load_truth_entries("beta1.jsonl")
-        beta2_entries = _load_truth_entries("beta2.jsonl")
+        alpha_entries = _load_truth_entries("alpha.xml")
+        beta1_entries = _load_truth_entries("beta1.xml")
+        beta2_entries = _load_truth_entries("beta2.xml")
 
         alpha_providers = get_provider_entries(alpha_entries)
         beta1_providers = get_provider_entries(beta1_entries)
@@ -922,15 +916,13 @@ class TestFeelingTruthType(unittest.TestCase):
         self.assertGreaterEqual(len(fact_sources), 1)
 
     def test_feeling_in_spec_file(self):
-        """hme.jsonl contains a <feeling> entry that normalizes correctly."""
-        spec_file = SPEC_DIR / "hme.jsonl"
+        """hme.xml contains a <feeling> entry that normalizes correctly."""
+        from state import load_state_file
+        spec_file = SPEC_DIR / "hme.xml"
         self.assertTrue(spec_file.exists(), f"{spec_file} must exist")
+        state = load_state_file(spec_file, strict=True)
         found_feeling = False
-        with open(spec_file) as f:
-            for line in f:
-                rec = json.loads(line)
-                if rec.get("type") != "truth":
-                    continue
+        for rec in state.get("truth", []):
                 content = rec.get("content", "")
                 if "<feeling" in content:
                     found_feeling = True
@@ -939,7 +931,7 @@ class TestFeelingTruthType(unittest.TestCase):
                     self.assertIsNotNone(parsed)
                     self.assertEqual(parsed["tag"], "feeling")
                     break
-        self.assertTrue(found_feeling, "hme.jsonl should contain at least one <feeling> entry")
+        self.assertTrue(found_feeling, "hme.xml should contain at least one <feeling> entry")
 
 
 # ---------------------------------------------------------------------------
@@ -968,7 +960,9 @@ class TestFeelingTruthType(unittest.TestCase):
         }
         result = _normalize_trust_entry(entry)
         self.assertEqual(result["id"], "f1")
-        self.assertAlmostEqual(result["trust"], 0.5)
+        # Valid XML feelings never carry trust; if one arrives with trust
+        # it passes through unchanged (normalization does not strip it).
+        self.assertEqual(result["trust"], 0.5)
         self.assertIn("<feeling", result["content"])
 
     def test_static_truth_includes_feeling(self):
@@ -1031,14 +1025,15 @@ class TestFeelingTruthType(unittest.TestCase):
         self.assertNotIn("auth1", ids)
 
     def test_feeling_in_spec_file(self):
-        """The hme.jsonl spec should contain at least one <feeling> entry."""
-        hme_path = SPEC_DIR / "hme.jsonl"
-        self.assertTrue(hme_path.exists(), "hme.jsonl should exist")
-        with open(hme_path) as f:
-            lines = [json.loads(line) for line in f if line.strip()]
-        feeling_entries = [e for e in lines if "<feeling" in e.get("content", "")]
+        """The hme.xml spec should contain at least one <feeling> entry."""
+        from state import load_state_file
+        hme_path = SPEC_DIR / "hme.xml"
+        self.assertTrue(hme_path.exists(), "hme.xml should exist")
+        state = load_state_file(hme_path, strict=True)
+        entries = state.get("truth", [])
+        feeling_entries = [e for e in entries if "<feeling" in e.get("content", "")]
         self.assertGreaterEqual(len(feeling_entries), 1,
-                                "hme.jsonl should have at least one <feeling> entry")
+                                "hme.xml should have at least one <feeling> entry")
 
 
 class TestDiamondConversationTree(unittest.TestCase):
@@ -1213,83 +1208,8 @@ class TestDiamondConversationTree(unittest.TestCase):
         self.assertEqual(root.get("children", []), [])
 
 
-class TestAlphaOutputDiamond(unittest.TestCase):
-    """Integration test: verify diamond pattern in output/alpha.jsonl.
-
-    Run after `make vote` to validate that the output file contains
-    the expected diamond conversation structure:
-
-           root (query + prelim)     ← 1 root, 2 messages
-          /    \\
-        beta1  beta2                 ← children of root, 1 message each
-          \\    /
-           final                     ← parentId: [beta1, beta2], 1 message, selected
-    """
-
-    OUTPUT_FILE = Path(__file__).resolve().parent.parent / "output" / "alpha.jsonl"
-
-    def test_diamond_in_output_alpha(self):
-        from state import load_state_file
-
-        if not self.OUTPUT_FILE.exists():
-            self.skipTest("output/alpha.jsonl not found — run 'make vote' first")
-
-        state = load_state_file(self.OUTPUT_FILE, strict=False)
-
-        if not state.get("conversations"):
-            self.skipTest("output/alpha.jsonl has no conversations — run 'make vote' first")
-
-        convs = state.get("conversations", [])
-        self.assertGreaterEqual(len(convs), 1,
-                                "output/alpha.jsonl should have at least one root conversation")
-
-        root = convs[0]
-
-        # Root should have 2 messages: user query + alpha preliminary
-        self.assertEqual(len(root["messages"]), 2,
-                         "Diamond root should have user query + alpha prelim")
-        self.assertEqual(root["messages"][0]["role"], "user")
-        self.assertEqual(root["messages"][1]["role"], "assistant")
-
-        # Root has only betas as direct children
-        betas = root.get("children", [])
-        self.assertGreaterEqual(len(betas), 2,
-                                f"Root should have >=2 beta children, got {len(betas)}")
-
-        # Each beta has 1 message and final as a child
-        for i, beta in enumerate(betas):
-            self.assertEqual(len(beta["messages"]), 1,
-                             f"Beta {i} should have exactly one message")
-            self.assertEqual(beta["messages"][0]["role"], "assistant",
-                             f"Beta {i} first message should be assistant")
-            self.assertGreaterEqual(len(beta.get("children", [])), 1,
-                                    f"Beta {i} should have final as child")
-
-        # Final is shared across all betas (same ID)
-        finals = [b["children"][-1] for b in betas]
-        final_ids = set(f["id"] for f in finals)
-        self.assertEqual(len(final_ids), 1,
-                         f"All betas should share the same final, got {final_ids}")
-        final = finals[0]
-
-        # Final should be the selected conversation
-        self.assertEqual(state.get("selected_conversation"), final["id"],
-                         "selected_conversation should point to the final node")
-
-        # Final has two parents (both betas) — true diamond
-        self.assertIsInstance(final.get("parentId"), list,
-                              "Final parentId should be a list (diamond merge)")
-        beta_ids = [b["id"] for b in betas]
-        self.assertEqual(sorted(final["parentId"]), sorted(beta_ids),
-                         "Final parentId should list all beta IDs")
-
-        # Root title should exist (was a prior bug)
-        self.assertTrue(root.get("title"),
-                        "Diamond root should have a non-empty title")
-
-        print(f"\n  Diamond verified: root '{root['title']}' → "
-              f"{len(betas)} betas, final '{final.get('title', '?')}'  "
-              f"(parentId: {final['parentId']})")
+# Diamond integration test moved to test/test_online_vote.py
+# (isolated from this module to avoid global state pollution)
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """HME logical inference tests.
 
-Loads data/hme.jsonl and verifies that the query pipeline produces
+Loads test/hme.xml and verifies that the query pipeline produces
 correct source selection and that a (mocked) LLM response can be validated
 against expected trust bounds.
 
@@ -40,8 +40,8 @@ from response import (
 
 
 def _load_hme_state() -> dict:
-    """Load data/hme.jsonl into a v2 state dict."""
-    hme_path = _project / "data" / "hme.jsonl"
+    """Load test/hme.xml into a v2 state dict."""
+    hme_path = _project / "test" / "hme.xml"
     return load_state_file(hme_path, strict=True)
 
 
@@ -252,7 +252,7 @@ class TestPromptStructure(unittest.TestCase):
         self.assertIn("axiom_01", user_msg)
 
     def test_all_trust_entries_loaded(self):
-        """hme.jsonl has 17 trust entries (7 facts + 5 operators + 1 feeling + 2 references + 1 provider + 1 authority); all use simplified XHTML format."""
+        """hme.xml has 17 trust entries (7 facts + 5 operators + 1 feeling + 2 references + 1 provider + 1 authority); all use simplified XHTML format."""
         trust = self.state.get("truth", [])
         self.assertEqual(len(trust), 17)
 

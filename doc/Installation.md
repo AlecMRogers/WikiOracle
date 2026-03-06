@@ -72,7 +72,7 @@ This invokes `bin/wikioracle.py` via the `WIKIORACLE_APP` Make variable (default
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `WIKIORACLE_STATE_FILE` | `llm.jsonl` | Path to local state file |
+| `WIKIORACLE_STATE_FILE` | `state.xml` | Path to local state file (XML preferred; JSONL supported for migration) |
 | `WIKIORACLE_BASE_URL` | `https://wikioracle.org` | Upstream base URL |
 | `WIKIORACLE_API_PATH` | `/chat/chat/completions` | Upstream chat path |
 | `WIKIORACLE_STATELESS` | (unset) | Set truthy to disable all writes and use in-memory state |
@@ -86,23 +86,23 @@ WikiOracle includes a local Flask server (`bin/wikioracle.py`) that enables chat
 
 | File | Role |
 |---|---|
-| `bin/wikioracle.py` | Local shim server (binds to `0.0.0.0:8888` with TLS). Proxies chat requests upstream and persists state to a single `llm.jsonl` file. Also supports CLI merge: `python bin/wikioracle.py merge llm_*.jsonl` |
-| `bin/config.py` | Config dataclass, YAML loader, provider registry, schema-driven YAML writer, normalization |
-| `bin/state.py` | State validation, JSONL I/O, collision-safe merge with deterministic ID suffixing, and optional context-delta extraction |
+| `bin/wikioracle.py` | Local shim server (binds to `0.0.0.0:8888` with TLS). Proxies chat requests upstream and persists state to `state.xml`. Also supports CLI merge: `python bin/wikioracle.py merge llm_*.xml` |
+| `bin/config.py` | Config dataclass, XML loader, provider registry, schema-driven XML writer, normalization |
+| `bin/state.py` | State validation, XML and JSONL I/O, collision-safe merge with deterministic ID suffixing, and optional context-delta extraction |
 | `bin/response.py` | Chat pipeline, provider coordination, state I/O, online training pipeline (Stages 2–4) |
-| `bin/truth.py` | Trust processing, authority resolution, operator engine (and/or/not), DegreeOfTruth |
+| `bin/truth.py` | Trust processing, authority resolution, operator engine (and/or/not), DegreeOfTruth, spacetime classification, PII detection |
 | `test/test_*.py` | Automated tests for state, stateless contract, prompt bundles, authority, derived truth, DoT, sensation, online training |
 | `html/index.html` | Single-page web UI shell with chat, settings, and merge tools |
-| `llm.jsonl` | Client-owned state file (line-delimited JSON). See `data/llm_state_v2.json` for the formal schema |
+| `state.xml` | Client-owned state file (WikiOracle State XML). See `data/state.xsd` for the XSD schema |
 
 ### Quickstart
 
 ```bash
-export WIKIORACLE_STATE_FILE="/path/to/your/project/llm.jsonl"
+export WIKIORACLE_STATE_FILE="/path/to/your/project/state.xml"
 pip install -r requirements.txt
 python bin/wikioracle.py
 ```
 
 ### Session portability
 
-Export conversations from phone/browser as `llm_YYYY.MM.DD.HHMM.jsonl`, then merge them into a local project's `llm.jsonl` later. This provides a clean integration path with Claude Code, OpenAI Codex, or any local tooling that can read the state file for project context.
+Export conversations from phone/browser as `llm_YYYY.MM.DD.HHMM.xml`, then merge them into a local project's `state.xml` later. This provides a clean integration path with Claude Code, OpenAI Codex, or any local tooling that can read the state file for project context. Legacy `.jsonl` exports are also supported — `load_state_file()` auto-detects the format.

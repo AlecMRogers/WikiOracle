@@ -1,16 +1,16 @@
 // config.js — Config persistence and normalization (no deps).
 // Loaded first; owns the config global.
 //
-// The config object has the same shape as config.yaml — no flattening or
+// The config object has the same shape as config.xml — no flattening or
 // renaming.  Missing sections/keys are filled with sensible defaults by
 // _normalizeConfig().  Runtime-only fields (server.providers, ui.model)
-// round-trip harmlessly through YAML.
+// round-trip harmlessly through config.
 //
 // Exports:
-//   config                — shared global: current config (YAML-shaped)
+//   config                — shared global: current config (XML-shaped)
 //   _loadLocalConfig()    — read config from sessionStorage
 //   _saveLocalConfig()    — write config to sessionStorage
-//   _normalizeConfig(cfg) — fill defaults, keep YAML shape
+//   _normalizeConfig(cfg) — fill defaults, keep XML shape
 //   _migrateOldPrefs()    — one-time migration from legacy wikioracle_prefs
 
 // ─── Config global (owned here, used everywhere) ───
@@ -40,7 +40,7 @@ function _loadLocalConfig() {
     }
     if (!raw) return null;
     var data = JSON.parse(raw);
-    // Handle legacy formats (raw YAML string or old { parsed, config } bundle)
+    // Handle legacy formats (raw string or old { parsed, config } bundle)
     if (typeof data === "string") return null;
     if (data.parsed && data.config) return data.config;  // upgrade old bundle
     return data;
@@ -83,7 +83,7 @@ function _normalizeConfig(cfg) {
 
 // ─── Legacy migration ───
 
-// One-time migration: wikioracle_prefs → YAML-shaped config
+// One-time migration: wikioracle_prefs → XML-shaped config
 async function _migrateOldPrefs() {
   const _OLD_PREFS_KEY = "wikioracle_prefs";
   let oldPrefs;
@@ -100,7 +100,7 @@ async function _migrateOldPrefs() {
     return;
   }
 
-  // Build YAML-shaped config from old prefs
+  // Build XML-shaped config from old prefs
   const migrated = _normalizeConfig({
     user: { name: oldPrefs.username || "User" },
     ui: {

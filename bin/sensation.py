@@ -29,8 +29,21 @@ table" is only true at a particular place and time; at a different
 spacetime it may not be.
 
 The detector below classifies sentences heuristically:
-  → Sentences with an IS-pattern become <fact trust="0.5" spacetime="[unverified]">
+  → Sentences with an IS-pattern become <fact trust="0.5">
   → Everything else becomes <feeling> (subjective, not penalizable)
+
+Feelings are orthogonal to truth: in the tetralemma (true / false /
+both / neither), feelings occupy the *neither* position.  They carry
+no trust attribute, are not used in model training, and are not
+persisted in the server truth table.  Poetry is a canonical example.
+
+Facts are classified by kind:
+  → "knowledge" — inferential / universal (no spatiotemporal binding)
+  → "news"      — direct perception bound to a specific place and time
+
+The server persists only knowledge facts.  News facts are session-only
+to avoid worldline capture (identity collapse through spatiotemporal
+observation).  See doc/BuddhistLogic.md for the philosophical basis.
 
 This is deliberately conservative: hedged claims ("might be"),
 questions, and subjective markers ("I think") override IS detection
@@ -248,7 +261,6 @@ def _split_sentences(text: str) -> list[str]:
 # =====================================================================
 
 _DEFAULT_TRUST = 0.5
-_DEFAULT_SPACETIME = "[unverified]"
 
 
 def _escape_xml(text: str) -> str:
@@ -257,18 +269,41 @@ def _escape_xml(text: str) -> str:
 
 
 def _wrap_fact(text: str, trust: float = _DEFAULT_TRUST,
-               spacetime: str = _DEFAULT_SPACETIME) -> str:
-    """Wrap *text* in a <fact> tag with trust and spacetime attributes."""
+               place: str = "", time: str = "") -> str:
+    """Wrap *text* in a ``<fact>`` tag with trust attribute.
+
+    Optional ``<place>`` and ``<time>`` child elements are emitted when
+    non-empty.
+
+    Parameters
+    ----------
+    trust : float
+        Trust score for the assertion.
+    place : str
+        Optional spatiotemporal place binding (emitted as child element).
+    time : str
+        Optional spatiotemporal time binding (emitted as child element).
+    """
     safe = _escape_xml(text)
-    return (
-        f'<fact trust="{trust}" spacetime="{_escape_xml(spacetime)}">'
-        f"{safe}</fact>"
-    )
+    place_el = f"<place>{_escape_xml(place)}</place>" if place else ""
+    time_el = f"<time>{_escape_xml(time)}</time>" if time else ""
+    return f'<fact trust="{trust}">{place_el}{time_el}{safe}</fact>'
 
 
-def _wrap_feeling(text: str) -> str:
-    """Wrap *text* in a <feeling> tag."""
-    return f"<feeling>{_escape_xml(text)}</feeling>"
+def _wrap_feeling(text: str, place: str = "", time: str = "") -> str:
+    """Wrap *text* in a ``<feeling>`` tag (no trust attribute).
+
+    Feelings are orthogonal to the truth lattice.  In the tetralemma
+    (true / false / both / neither), feelings occupy the *neither*
+    position — they are not penalizable if incorrect, and they are
+    excluded from model training.  Poetry is a canonical example.
+
+    Optional ``<place>`` and ``<time>`` child elements are emitted when
+    non-empty.
+    """
+    place_el = f"<place>{_escape_xml(place)}</place>" if place else ""
+    time_el = f"<time>{_escape_xml(time)}</time>" if time else ""
+    return f"<feeling>{place_el}{time_el}{_escape_xml(text)}</feeling>"
 
 
 def tag_message(
@@ -328,6 +363,10 @@ def tag_message(
 def _extract_facts(content: str, trust: float | None = None) -> list[dict]:
     """Extract fact-classified sentences from *content* as truth entries.
 
+    Only facts are extracted — feelings are explicitly excluded from truth
+    records because they are orthogonal to the truth lattice (the *neither*
+    position of the tetralemma).
+
     Returns a list of dicts suitable for JSONL truth records.
     """
     facts = []
@@ -345,8 +384,10 @@ def _extract_facts(content: str, trust: float | None = None) -> list[dict]:
                 "type": "truth",
                 "title": sent[:80],
                 "trust": t,
-                "content": f"<fact>{_escape_xml(sent)}</fact>",
-                "spacetime": _DEFAULT_SPACETIME,
+                "content": (
+                    f'<fact trust="{t}">'
+                    f"{_escape_xml(sent)}</fact>"
+                ),
                 "time": utc_now_iso(),
             }
             entry["id"] = ensure_trust_id(entry)

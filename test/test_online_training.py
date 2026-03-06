@@ -65,7 +65,7 @@ class TestOnlineTraining(unittest.TestCase):
         env["PYTHONPATH"] = f"{_nanochat}:{_bin}"
         env["NANOCHAT_BASE_DIR"] = str(_nanochat)
 
-        # Inline launcher script — avoids import-path issues with start_nanochat.py
+        # Inline launcher script — mirrors nanochat_ext.start_server()
         launcher = (
             "import sys; "
             f"sys.argv = ['test', '-p', '{_PORT}', '-d', 'float32', '--device-type', 'cpu']; "

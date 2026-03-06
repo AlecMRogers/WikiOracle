@@ -254,6 +254,11 @@ def _parse_root_attrs(content: str) -> dict | None:
             except (TypeError, ValueError):
                 result["trust"] = None
             result["title"] = child.get("title", "")
+            # Extract <place> and <time> as child elements (not attributes)
+            place_el = child.find("place")
+            result["place"] = (place_el.text or "").strip() if place_el is not None else ""
+            time_el = child.find("time")
+            result["time_val"] = (time_el.text or "").strip() if time_el is not None else ""
             return result
     return None
 
@@ -440,6 +445,10 @@ def _normalize_trust_entry(raw: Any) -> dict:
             item["trust"] = min(1.0, max(-1.0, parsed["trust"]))
         if parsed["title"] and not item.get("title"):
             item["title"] = parsed["title"]
+        if parsed.get("place") and not item.get("place"):
+            item["place"] = parsed["place"]
+        if parsed.get("time_val") and not item.get("time_val"):
+            item["time_val"] = parsed["time_val"]
 
     # Ensure ID exists (fallback to generated UUID)
     content = item["content"]
@@ -452,6 +461,233 @@ def _normalize_trust_entry(raw: Any) -> dict:
     return item
 
 
+# ---------------------------------------------------------------------------
+# Spacetime fact classification, PII detection, and anonymization
+# ---------------------------------------------------------------------------
+# Placeholders and sentinel values that do NOT count as real spatiotemporal
+# bindings.  Any place or time value matching one of these (case-insensitive)
+# is treated as absent.
+_PLACEHOLDER_VALUES = frozenset({
+    "",
+    "[unverified]",
+    "unverified",
+    "[unknown]",
+    "unknown",
+    "[none]",
+    "none",
+    "[n/a]",
+    "n/a",
+    "[tbd]",
+    "tbd",
+})
+
+
+def _has_real_value(value: str | None) -> bool:
+    """Return True if *value* is a non-empty, non-placeholder string."""
+    if not value or not isinstance(value, str):
+        return False
+    return value.strip().lower() not in _PLACEHOLDER_VALUES
+
+
+def is_news_fact(entry: dict) -> bool:
+    """Return True if this entry is spatiotemporally bound (news).
+
+    Checks XHTML content for <place> and <time> child elements with
+    real (non-placeholder) values.
+    """
+    content = entry.get("content", "")
+    if not isinstance(content, str) or not content.strip():
+        return False
+    try:
+        root = ET.fromstring(f"<root>{content}</root>")
+    except ET.ParseError:
+        return False
+    for child in root:
+        place_el = child.find("place")
+        time_el = child.find("time")
+        if place_el is not None and _has_real_value(place_el.text):
+            return True
+        if time_el is not None and _has_real_value(time_el.text):
+            return True
+    return False
+
+
+def is_knowledge_fact(entry: dict) -> bool:
+    """Return True if this is a knowledge fact (no spatiotemporal binding).
+
+    Knowledge facts are universal/inferential — they have no specific
+    place or time binding.
+    """
+    return not is_news_fact(entry)
+
+
+def filter_knowledge_only(entries: list) -> list:
+    """Return only knowledge facts from a list of truth entries.
+
+    This is used by the server to filter what gets persisted to the truth
+    corpus (news facts are session-only).
+    """
+    return [e for e in entries if is_knowledge_fact(e)]
+
+
+# --- Basic gazetteer: top 50 world cities (case-insensitive matching) -------
+_CITY_NAMES = frozenset({
+    "tokyo", "delhi", "shanghai", "são paulo", "sao paulo", "mumbai",
+    "beijing", "cairo", "dhaka", "mexico city", "osaka", "karachi",
+    "chongqing", "istanbul", "buenos aires", "kolkata", "kinshasa",
+    "lagos", "manila", "tianjin", "rio de janeiro", "guangzhou",
+    "lahore", "bangalore", "moscow", "shenzhen", "chennai", "bogotá",
+    "bogota", "jakarta", "lima", "bangkok", "hyderabad", "seoul",
+    "nagoya", "london", "chengdu", "tehran", "ho chi minh city",
+    "luanda", "new york", "los angeles", "chicago", "houston",
+    "toronto", "sydney", "paris", "berlin", "madrid", "singapore",
+})
+
+# Regex patterns for PII / identity-collapse detection
+_RE_USERNAME = re.compile(
+    r"""(?:^|[\s(,;])               # boundary
+        (?:user|usr|u/)?\w{1,3}\d{3,}  # user123, usr4567, u/name123
+        (?=[\s),;:.]|$)
+    """,
+    re.VERBOSE | re.IGNORECASE,
+)
+_RE_HANDLE = re.compile(r"@[A-Za-z_]\w{1,30}")
+_RE_EMAIL = re.compile(
+    r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}"
+)
+_RE_PHONE = re.compile(
+    r"""(?:^|[\s(,;])
+        (?:\+?\d{1,3}[\s\-.]?)?     # country code
+        \(?\d{2,4}\)?[\s\-.]?        # area code
+        \d{3,4}[\s\-.]?              # first group
+        \d{3,4}                       # second group
+        (?=[\s),;:.]|$)
+    """,
+    re.VERBOSE,
+)
+_RE_IP_ADDR = re.compile(
+    r"\b(?:\d{1,3}\.){3}\d{1,3}\b"
+)
+_RE_SPECIFIC_TIME = re.compile(
+    r"""(?:
+        \d{1,2}:\d{2}(?::\d{2})?(?:\s*[AaPp][Mm])?   # 9:14 PM, 14:30:00
+        |
+        \d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}             # ISO timestamps
+    )""",
+    re.VERBOSE,
+)
+_RE_GPS_COORDS = re.compile(
+    r"""(?:
+        [-+]?\d{1,3}\.\d{4,}[\s,]+[-+]?\d{1,3}\.\d{4,}   # 40.7128, -74.0060
+        |
+        \d{1,3}°\d{1,2}[''′]\d{0,2}[""″]?\s*[NSns]       # 40°42'N
+    )""",
+    re.VERBOSE,
+)
+_RE_STREET_ADDR = re.compile(
+    r"\b\d{1,5}\s+(?:[A-Z][a-z]+\s+){1,3}(?:St|Street|Ave|Avenue|Blvd|Boulevard|Rd|Road|Dr|Drive|Ln|Lane|Way|Ct|Court|Pl|Place)\b",
+    re.IGNORECASE,
+)
+_RE_NAMED_PERSON_TEMPORAL = re.compile(
+    r"""(?:
+        (?:[A-Z][a-z]+\s+){1,2}[A-Z][a-z]+         # "John David Smith"
+        \s+(?:at|on|in|from|near|around)\s+          # temporal/spatial preposition
+        (?:\d|[A-Z])                                  # followed by time or place
+    )""",
+    re.VERBOSE,
+)
+
+_IDENTITY_PATTERNS = [
+    _RE_USERNAME,
+    _RE_HANDLE,
+    _RE_EMAIL,
+    _RE_PHONE,
+    _RE_IP_ADDR,
+    _RE_SPECIFIC_TIME,
+    _RE_GPS_COORDS,
+    _RE_STREET_ADDR,
+    _RE_NAMED_PERSON_TEMPORAL,
+]
+
+
+def detect_identity_collapse(content: str) -> bool:
+    """Check if content contains information that could collapse identity.
+
+    Detects:
+    - Usernames/handles (user123, @handle)
+    - Specific times (9:14 PM, ISO timestamps)
+    - Specific places (city names, GPS coords, addresses)
+    - Email addresses, phone numbers, IP addresses
+    - Named individuals with temporal/spatial markers
+
+    Returns True if the content risks identity exposure.
+    """
+    if not isinstance(content, str) or not content.strip():
+        return False
+
+    # Strip XHTML tags for plain-text analysis
+    plain = strip_xhtml(content)
+
+    # Check regex patterns
+    for pattern in _IDENTITY_PATTERNS:
+        if pattern.search(plain):
+            return True
+
+    # Check city gazetteer (word-boundary aware, case-insensitive)
+    plain_lower = plain.lower()
+    for city in _CITY_NAMES:
+        # Use word boundary matching to avoid false positives
+        if re.search(r"\b" + re.escape(city) + r"\b", plain_lower):
+            return True
+
+    return False
+
+
+def strip_spacetime_elements(content: str) -> str:
+    """Remove <place> and <time> child elements from XHTML fact/feeling tags.
+
+    Used when the server needs to anonymize entries before persistence.
+    """
+    if not isinstance(content, str) or not content.strip():
+        return content
+    try:
+        root = ET.fromstring(f"<root>{content}</root>")
+    except ET.ParseError:
+        return content
+
+    changed = False
+    for child in root:
+        if child.tag in _RECOGNIZED_TAGS:
+            for tag_name in ("place", "time"):
+                el = child.find(tag_name)
+                if el is not None:
+                    # Preserve tail text (content after the child element)
+                    tail = el.tail or ""
+                    # Find preceding sibling or parent to attach tail text
+                    siblings = list(child)
+                    idx = siblings.index(el)
+                    if idx > 0:
+                        prev = siblings[idx - 1]
+                        prev.tail = (prev.tail or "") + tail
+                    else:
+                        child.text = (child.text or "") + tail
+                    child.remove(el)
+                    changed = True
+
+    if not changed:
+        return content
+
+    inner = ET.tostring(root, encoding="unicode", method="xml")
+    return inner.removeprefix("<root>").removesuffix("</root>").strip()
+
+
+# Backward-compatible alias
+strip_spacetime_attrs = strip_spacetime_elements
+
+
+# ---------------------------------------------------------------------------
+# Provider sort key
+# ---------------------------------------------------------------------------
 def _provider_sort_key(entry: dict) -> tuple:
     """Sort trust entries by trust (desc), timestamp (desc), then ID."""
     trust_val = entry.get("trust", 0.0)
@@ -935,7 +1171,7 @@ def user_guid(user_name: str, uid: str | None = None) -> str:
     """Return a user GUID, preferring an explicit *uid* from config.
 
     When *uid* is provided (non-empty string), it is returned as-is —
-    this is the preferred path (``user.uid`` in config.yaml).
+    this is the preferred path (``user.uid`` in config.xml).
 
     When *uid* is ``None`` or empty, falls back to a deterministic
     UUID-5 derived from *user_name* in the WikiOracle namespace.

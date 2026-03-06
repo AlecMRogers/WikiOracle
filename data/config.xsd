@@ -1,0 +1,470 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           elementFormDefault="qualified">
+
+  <xs:annotation>
+    <xs:documentation>
+      WikiOracle Config — XML configuration schema.
+      All fields are required. Defines the structure for WikiOracle
+      XML configuration files.
+    </xs:documentation>
+  </xs:annotation>
+
+  <!-- ======================================================================
+       Root element
+       ====================================================================== -->
+
+  <xs:element name="config">
+    <xs:annotation>
+      <xs:documentation>
+        Root configuration element for WikiOracle. Contains user identity,
+        LLM provider definitions, chat behaviour, UI defaults, and server
+        runtime parameters.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:complexType>
+      <xs:all>
+        <xs:element name="user"    type="UserType"/>
+        <xs:element name="providers" type="ProvidersType"/>
+        <xs:element name="chat"    type="ChatType"/>
+        <xs:element name="ui"      type="UIType"/>
+        <xs:element name="server"  type="ServerType"/>
+      </xs:all>
+    </xs:complexType>
+  </xs:element>
+
+  <!-- ======================================================================
+       Section 1 — User
+       ====================================================================== -->
+
+  <xs:complexType name="UserType">
+    <xs:annotation>
+      <xs:documentation>
+        User identity. The display name shown in chat messages and an
+        optional persistent GUID (auto-generated from the name when blank).
+      </xs:documentation>
+    </xs:annotation>
+    <xs:all>
+      <xs:element name="name" type="xs:string">
+        <xs:annotation>
+          <xs:documentation>Display name shown in chat messages.</xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="uid" type="xs:string">
+        <xs:annotation>
+          <xs:documentation>
+            Persistent user GUID. Leave empty or omit to auto-generate
+            from the user name.
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+    </xs:all>
+  </xs:complexType>
+
+  <!-- ======================================================================
+       Section 2 — Providers
+       ====================================================================== -->
+
+  <xs:complexType name="ProvidersType">
+    <xs:annotation>
+      <xs:documentation>
+        Container for one or more LLM provider definitions. Each provider
+        element carries a required "name" attribute used as its lookup key
+        (e.g. "wikioracle", "openai", "anthropic").
+      </xs:documentation>
+    </xs:annotation>
+    <xs:sequence>
+      <xs:element name="provider" type="ProviderType" maxOccurs="unbounded">
+        <xs:annotation>
+          <xs:documentation>A single LLM provider configuration.</xs:documentation>
+        </xs:annotation>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="ProviderType">
+    <xs:annotation>
+      <xs:documentation>
+        Configuration for an individual LLM provider including API
+        credentials, endpoint URL, default model, and request options.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:all>
+      <xs:element name="display_name" type="xs:string">
+        <xs:annotation>
+          <xs:documentation>
+            Human-readable display name shown in the chat UI to tag
+            assistant messages (e.g. "chatGPT", "claude", "gemini").
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="username" type="xs:string">
+        <xs:annotation>
+          <xs:documentation>
+            API login email address associated with this provider account.
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="url" type="xs:anyURI">
+        <xs:annotation>
+          <xs:documentation>
+            API endpoint URL. Built-in defaults are used when omitted.
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="api_key" type="xs:string">
+        <xs:annotation>
+          <xs:documentation>
+            API key for authentication. Can also be supplied via the
+            corresponding environment variable (e.g. OPENAI_API_KEY,
+            ANTHROPIC_API_KEY, GEMINI_API_KEY, XAI_API_KEY).
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="default_model" type="xs:string">
+        <xs:annotation>
+          <xs:documentation>
+            Default model identifier to use for requests when no model
+            is explicitly selected (e.g. "gpt-4o", "claude-sonnet-4-6").
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="timeout">
+        <xs:annotation>
+          <xs:documentation>
+            Request timeout in seconds. Must be a positive integer.
+          </xs:documentation>
+        </xs:annotation>
+        <xs:simpleType>
+          <xs:restriction base="xs:positiveInteger"/>
+        </xs:simpleType>
+      </xs:element>
+      <xs:element name="streaming" type="xs:boolean">
+        <xs:annotation>
+          <xs:documentation>
+            Whether to use streaming (Server-Sent Events) for responses
+            from this provider. Defaults to false when omitted.
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+    </xs:all>
+    <xs:attribute name="name" type="xs:string" use="required">
+      <xs:annotation>
+        <xs:documentation>
+          Provider lookup key used internally to identify this provider
+          (e.g. "wikioracle", "openai", "anthropic", "gemini", "grok").
+        </xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+  </xs:complexType>
+
+  <!-- ======================================================================
+       Section 3 — Chat
+       ====================================================================== -->
+
+  <xs:complexType name="ChatType">
+    <xs:annotation>
+      <xs:documentation>
+        Chat behaviour settings controlling sampling temperature,
+        retrieval-augmented generation, URL fetching, and action
+        confirmation prompts.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:all>
+      <xs:element name="temperature">
+        <xs:annotation>
+          <xs:documentation>
+            Sampling temperature for LLM responses. Valid range is
+            0.0 (deterministic) to 2.0 (maximum randomness).
+          </xs:documentation>
+        </xs:annotation>
+        <xs:simpleType>
+          <xs:restriction base="xs:decimal">
+            <xs:minInclusive value="0.0"/>
+            <xs:maxInclusive value="2.0"/>
+          </xs:restriction>
+        </xs:simpleType>
+      </xs:element>
+      <xs:element name="rag" type="xs:boolean">
+        <xs:annotation>
+          <xs:documentation>
+            Enable retrieval-augmented generation using the truth corpus
+            to ground responses in verified knowledge.
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="url_fetch" type="xs:boolean">
+        <xs:annotation>
+          <xs:documentation>
+            Allow the assistant to fetch and incorporate content from
+            URLs referenced in the conversation.
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="confirm_actions" type="xs:boolean">
+        <xs:annotation>
+          <xs:documentation>
+            When true, the UI prompts the user for confirmation before
+            destructive operations such as deletes and merges.
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+    </xs:all>
+  </xs:complexType>
+
+  <!-- ======================================================================
+       Section 4 — UI
+       ====================================================================== -->
+
+  <xs:complexType name="UIType">
+    <xs:annotation>
+      <xs:documentation>
+        User interface defaults including provider selection, layout mode,
+        colour theme, splitter position, and swipe navigation toggles.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:all>
+      <xs:element name="default_provider" type="xs:string">
+        <xs:annotation>
+          <xs:documentation>
+            Provider key selected by default on application startup
+            (must match a key in the providers section).
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="layout">
+        <xs:annotation>
+          <xs:documentation>
+            Layout mode for the chat interface.
+            - horizontal: side-by-side tree and chat panels
+            - vertical:   stacked tree and chat panels
+            - flat:       single-panel chat only
+          </xs:documentation>
+        </xs:annotation>
+        <xs:simpleType>
+          <xs:restriction base="xs:string">
+            <xs:enumeration value="horizontal"/>
+            <xs:enumeration value="vertical"/>
+            <xs:enumeration value="flat"/>
+          </xs:restriction>
+        </xs:simpleType>
+      </xs:element>
+      <xs:element name="theme">
+        <xs:annotation>
+          <xs:documentation>
+            Colour theme for the UI.
+            - system: follow the operating system preference
+            - light:  light background theme
+            - dark:   dark background theme
+          </xs:documentation>
+        </xs:annotation>
+        <xs:simpleType>
+          <xs:restriction base="xs:string">
+            <xs:enumeration value="system"/>
+            <xs:enumeration value="light"/>
+            <xs:enumeration value="dark"/>
+          </xs:restriction>
+        </xs:simpleType>
+      </xs:element>
+      <xs:element name="splitter_pct">
+        <xs:annotation>
+          <xs:documentation>
+            Conversation-tree / chat panel splitter position expressed as
+            a percentage (0-100). A value of 0 collapses the tree panel.
+          </xs:documentation>
+        </xs:annotation>
+        <xs:simpleType>
+          <xs:restriction base="xs:integer">
+            <xs:minInclusive value="0"/>
+            <xs:maxInclusive value="100"/>
+          </xs:restriction>
+        </xs:simpleType>
+      </xs:element>
+      <xs:element name="swipe_nav_horizontal" type="xs:boolean">
+        <xs:annotation>
+          <xs:documentation>
+            Enable horizontal swipe gestures (left/right) to navigate
+            between sibling conversation branches.
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="swipe_nav_vertical" type="xs:boolean">
+        <xs:annotation>
+          <xs:documentation>
+            Enable vertical swipe gestures (up/down) to navigate between
+            sibling conversation branches.
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+    </xs:all>
+  </xs:complexType>
+
+  <!-- ======================================================================
+       Section 5 — Server
+       ====================================================================== -->
+
+  <xs:complexType name="ServerType">
+    <xs:annotation>
+      <xs:documentation>
+        Server runtime parameters. These values serve as defaults and are
+        typically overridden via CLI flags at startup.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:all>
+      <xs:element name="stateless" type="xs:boolean">
+        <xs:annotation>
+          <xs:documentation>
+            Stateless mode — when true the server performs no disk writes.
+            Equivalent to the --stateless CLI flag.
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="url_prefix" type="xs:string">
+        <xs:annotation>
+          <xs:documentation>
+            URL path prefix prepended to all routes, e.g. "/chat".
+            Equivalent to the --url-prefix CLI flag.
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="online_training" type="OnlineTrainingType">
+        <xs:annotation>
+          <xs:documentation>
+            Online (continuous) learning configuration. Controls how the
+            model updates its truth corpus from user interactions.
+            See doc/Training.md for details.
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="allowed_urls" type="AllowedUrlsType">
+        <xs:annotation>
+          <xs:documentation>
+            URL prefixes permitted for authority lookups and dynamic
+            provider fetches. Only https:// URLs matching one of these
+            prefixes are allowed; file:// URLs are always blocked.
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+    </xs:all>
+  </xs:complexType>
+
+  <!-- ── Online Training ─────────────────────────────────────────────────── -->
+
+  <xs:complexType name="OnlineTrainingType">
+    <xs:annotation>
+      <xs:documentation>
+        Configuration for the continuous online learning subsystem.
+        Controls learning rates, truth corpus location, device selection,
+        and optional dissonance detection.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:all>
+      <xs:element name="enabled" type="xs:boolean">
+        <xs:annotation>
+          <xs:documentation>
+            Master switch for continuous truth corpus updates from user
+            interactions. Defaults to false.
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="truth_corpus_path" type="xs:string">
+        <xs:annotation>
+          <xs:documentation>
+            Filesystem path to the append-only truth log (JSONL format).
+            Relative paths are resolved from the project root.
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="alpha_base" type="xs:decimal">
+        <xs:annotation>
+          <xs:documentation>
+            Base learning rate for online training weight updates.
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="alpha_min" type="xs:decimal">
+        <xs:annotation>
+          <xs:documentation>
+            Minimum learning rate floor. The adaptive scheduler will
+            never reduce the rate below this value.
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="alpha_max" type="xs:decimal">
+        <xs:annotation>
+          <xs:documentation>
+            Maximum learning rate ceiling. The adaptive scheduler will
+            never increase the rate above this value.
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="merge_rate" type="xs:decimal">
+        <xs:annotation>
+          <xs:documentation>
+            Slow-moving exponential average rate used when merging newly
+            learned truth entries into the canonical corpus.
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="device">
+        <xs:annotation>
+          <xs:documentation>
+            Compute device for training operations.
+            - auto: automatically select the best available device
+            - cpu:  force CPU execution
+            - cuda: use an NVIDIA CUDA GPU
+          </xs:documentation>
+        </xs:annotation>
+        <xs:simpleType>
+          <xs:restriction base="xs:string">
+            <xs:enumeration value="auto"/>
+            <xs:enumeration value="cpu"/>
+            <xs:enumeration value="cuda"/>
+          </xs:restriction>
+        </xs:simpleType>
+      </xs:element>
+      <xs:element name="dissonance_enabled" type="xs:boolean">
+        <xs:annotation>
+          <xs:documentation>
+            Enable cognitive dissonance detection. When true the trainer
+            identifies and penalises contradictions between new inputs
+            and established truth entries.
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="operators_dynamic_enabled" type="xs:boolean">
+        <xs:annotation>
+          <xs:documentation>
+            Enable dynamic operator loading from
+            operators/operators.jsonl. Custom operators extend the
+            training pipeline with user-defined transformations.
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+    </xs:all>
+  </xs:complexType>
+
+  <!-- ── Allowed URLs ────────────────────────────────────────────────────── -->
+
+  <xs:complexType name="AllowedUrlsType">
+    <xs:annotation>
+      <xs:documentation>
+        A list of URL prefix strings. Each entry defines a permitted
+        prefix for outbound HTTP(S) requests made by the server for
+        authority checks and provider API calls.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:sequence>
+      <xs:element name="url" type="xs:string" minOccurs="0" maxOccurs="unbounded">
+        <xs:annotation>
+          <xs:documentation>
+            A single allowed URL prefix (e.g. "https://api.openai.com/").
+            The server permits outbound requests only to URLs that begin
+            with one of these prefixes.
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+
+</xs:schema>

@@ -2,7 +2,7 @@
 """Unit tests for the derived truth engine (compute_derived_truth).
 
 Tests Strong Kleene operators (and/or/not/non), fixed-point iteration,
-cycle termination, and integration with hme.jsonl test data.
+cycle termination, and integration with hme.xml test data.
 """
 
 import json
@@ -324,23 +324,18 @@ def test_no_operators():
     assert derived["b"] == -0.5
 
 
-# ─── Integration with hme.jsonl ───
+# ─── Integration with hme.xml ───
 
 
-def test_hme_jsonl_operators():
-    """Load data/hme.jsonl and verify derived truth for operator entries."""
-    hme_path = os.path.join(os.path.dirname(__file__), "..", "data", "hme.jsonl")
+def test_hme_xml_operators():
+    """Load test/hme.xml and verify derived truth for operator entries."""
+    hme_path = os.path.join(os.path.dirname(__file__), "hme.xml")
     if not os.path.exists(hme_path):
         return  # skip if file not present
 
-    with open(hme_path) as f:
-        entries = []
-        for line in f:
-            line = line.strip()
-            if line:
-                rec = json.loads(line)
-                if rec.get("type") in ("truth", "trust"):
-                    entries.append(rec)
+    from state import load_state_file
+    state = load_state_file(hme_path, strict=True)
+    entries = state.get("truth", [])
 
     derived = compute_derived_truth(entries)
 

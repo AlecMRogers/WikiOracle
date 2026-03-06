@@ -7,7 +7,7 @@ WikiOracle is a local-first Flask shim that sits between a browser UI and one or
 ```
 Browser  ──HTTP──▸  wikioracle.py  ──HTTP──▸  Upstream LLM
                         │
-                    llm.jsonl
+                    state.xml
                    (persistent state)
 ```
 
@@ -15,12 +15,13 @@ Browser  ──HTTP──▸  wikioracle.py  ──HTTP──▸  Upstream LLM
 
 | Layer | File(s) | Role |
 |---|---|---|
-| Server | `bin/wikioracle.py` | Flask app — `/chat`, `/state`, `/merge`, `/config`, `/bootstrap` endpoints; reads/writes `llm.jsonl` |
-| Config | `bin/config.py` | Config dataclass, YAML loader, provider registry, schema-driven YAML writer, normalization |
-| State library | `bin/state.py` | Pure-Python tree operations, JSONL serialisation, legacy migration |
+| Server | `bin/wikioracle.py` | Flask app — `/chat`, `/state`, `/merge`, `/config`, `/bootstrap` endpoints; reads/writes `state.xml` |
+| Config | `bin/config.py` | Config dataclass, XML loader, provider registry, schema-driven XML writer, normalization |
+| State library | `bin/state.py` | Pure-Python tree operations, XML and JSONL serialisation, legacy migration |
 | Response | `bin/response.py` | Chat pipeline, provider coordination, state I/O, online training pipeline (Stages 2–4) |
-| Truth | `bin/truth.py` | Trust processing, authority resolution, operator engine (and/or/not), DegreeOfTruth |
-| Sensation | `bin/sensation.py` | Preprocessing: Korzybski IS detection, XML tagging (`<fact>`/`<feeling>`/`<Q>`/`<R>`), corpus conversion |
+| Truth | `bin/truth.py` | Trust processing, authority resolution, operator engine (and/or/not), DegreeOfTruth, spacetime fact classification, PII detection |
+| Sensation | `bin/sensation.py` | Preprocessing: Korzybski IS detection, XML tagging (`<fact>`/`<feeling>`/`<Q>`/`<R>` with `<place>`/`<time>` child elements), corpus conversion |
+| OpenClaw | `openclaw/` (git submodule) + `bin/openclaw_ext.py` | Multi-channel front-end (Slack/Discord/Telegram) — bridges external platforms to WikiOracle's `/chat` endpoint |
 | NanoChat ext | `bin/nanochat_ext.py` | `POST /train` route mounted onto NanoChat's FastAPI app for online SFT |
 | Client app | `html/wikioracle.js` | State management, API calls, message rendering, drag/context-menu interactions |
 | Client config | `html/config.js` | Config global, sessionStorage persistence, normalization, legacy migration |
@@ -29,27 +30,57 @@ Browser  ──HTTP──▸  wikioracle.py  ──HTTP──▸  Upstream LLM
 | Client query | `html/query.js` | Server communication layer, conversation tree helpers |
 | Tree renderer | `html/tree.js` | D3.js top-down hierarchy — layout, navigation, drag-to-merge |
 | Shell | `html/index.html` | Single-page app: layout, CSS, settings panel |
-| Data | `data/llm_state.json` | JSON Schema for the state format |
-| Tests | `test/test_*.py` | Tests covering state, stateless contract, prompt bundles, authority, derived truth, DoT, sensation, online training |
+| Data | `data/llm_state.json` | JSON Schema for the state format (legacy) |
+| State schema | `data/state.xsd` | XSD schema for XML state files (WikiOracle State) |
+| Config schema | `data/config.xsd` | XSD schema for `config.xml` validation (WikiOracle Config) |
+| Tests | `test/test_*.py` | Tests covering state, stateless contract, prompt bundles, authority, derived truth, DoT, sensation, online training, XML state roundtrip |
 
 ## Data model
 
-### On disk — JSONL
+### On disk — XML
 
-State is persisted as line-delimited JSON. Each line is a self-typed record:
+State is persisted as XML (WikiOracle State format, validated by `data/state.xsd`). Conversations nest naturally in the XML tree — no flatten/unflatten needed:
 
-```jsonl
-{"type":"header","schema":"…","date":"…","context":"…","selected_conversation":"c_abc"}
-{"type":"conversation","id":"c_abc","title":"Animals","messages":[…]}
-{"type":"conversation","id":"c_def","title":"Dogs","parent":"c_abc","messages":[…]}
-{"type":"truth","id":"t_001","content":"…","certainty":0.9}
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<state>
+  <header>
+    <version>2</version>
+    <schema>https://wikioracle.org/schemas/state/v2</schema>
+    <time>2026-03-05T12:00:00Z</time>
+    <title>My Project</title>
+    <context><div><p>Project context</p></div></context>
+  </header>
+  <conversations>
+    <conversation id="c_abc">
+      <title>Animals</title>
+      <messages>
+        <message id="m1" role="user" username="Alice" time="...">
+          <content><Q><fact trust="0.5">Dogs are mammals.</fact></Q></content>
+        </message>
+      </messages>
+      <children>
+        <conversation id="c_def" parentId="c_abc">
+          <title>Dogs</title>
+          <messages>...</messages>
+          <children/>
+        </conversation>
+      </children>
+    </conversation>
+  </conversations>
+  <truth>
+    <entry id="t_001" title="Mammals" trust="0.9" time="...">
+      <content><fact trust="0.9">All dogs are mammals.</fact></content>
+    </entry>
+  </truth>
+</state>
 ```
 
-The `parent` field encodes the tree structure in flat form. Root conversations omit `parent`.
+JSONL is supported as a legacy format for migration (auto-detected by file extension or content prefix).
 
 ### In memory — nested tree
 
-On load, conversations are reconstructed into a nested tree:
+On load, conversations are represented as a nested tree:
 
 ```
 state.conversations = [
@@ -90,8 +121,8 @@ In the tree: `Dialogue → Conversation*`, `Conversation → Message* + Conversa
 | GET | `/state_size` | State file size in bytes (progress bar) |
 | POST | `/chat` | Send a message — append to existing conversation, branch, or create new root |
 | POST | `/merge` | Merge an imported state file into current state |
-| GET | `/config` | Normalized config (YAML-shaped, includes provider metadata and defaults) |
-| POST | `/config` | Accept full config dict; write config.yaml to disk |
+| GET | `/config` | Normalized config (includes provider metadata and defaults) |
+| POST | `/config` | Accept full config dict; write config.xml to disk |
 | GET | `/` | Serve `html/index.html` |
 | GET | `/<file>` | Serve static assets from `html/` |
 
@@ -105,7 +136,7 @@ POST /chat response:  server returns text + conversation delta
                       (no truth, no context, no output)
 ```
 
-In stateful mode, the server persists the full state (including the client-supplied truth) to `llm.jsonl`. On error rollback, the client reloads conversations from the server but preserves its own truth, context, and output.
+In stateful mode, the server persists the full state (including the client-supplied truth) to `state.xml`. On error rollback, the client reloads conversations from the server but preserves its own truth, context, and output.
 
 In stateless mode, the server has no disk — the client sends and receives the full state.
 
@@ -214,8 +245,8 @@ When no conversation is selected (root view), a placeholder prompts the user to 
 ### Rendering pipeline (end to end)
 
 ```
-llm.jsonl on disk
-    ↓  [jsonl_to_state]
+state.xml on disk
+    ↓  [xml_to_state / jsonl_to_state]
 In-memory state with nested conversation tree
     ↓  [GET /state]
 Client receives state JSON
@@ -265,8 +296,12 @@ Key functions:
 
 | Function | Purpose |
 |---|---|
-| `state_to_jsonl(state)` | Serialise nested tree → JSONL lines |
-| `jsonl_to_state(lines)` | Parse JSONL → nested tree |
+| `state_to_xml(state)` | Serialise nested tree → XML string |
+| `xml_to_state(text)` | Parse XML → nested tree |
+| `atomic_write_xml(path, state)` | Atomic XML file write (temp + fsync + rename) |
+| `state_to_jsonl(state)` | Serialise nested tree → JSONL lines (legacy) |
+| `jsonl_to_state(lines)` | Parse JSONL → nested tree (legacy) |
+| `load_state_file(path)` | Auto-detect XML or JSONL by extension/content |
 | `find_conversation(convs, id)` | Recursive tree lookup |
 | `get_ancestor_chain(convs, id)` | Walk up to root, return list of ancestors |
 | `get_context_messages(convs, id)` | Ancestor chain messages in order (for LLM context) |

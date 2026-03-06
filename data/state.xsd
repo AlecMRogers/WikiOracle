@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           elementFormDefault="qualified">
+
+  <xs:annotation>
+    <xs:documentation>
+      WikiOracle State — XML state schema.
+      Defines the structure for WikiOracle state files that store
+      conversations, truth entries, and session metadata.  Replaces
+      the legacy JSONL (line-delimited JSON) format.
+
+      Conversations nest naturally in XML — no flatten/unflatten needed.
+      Truth entries carry self-describing XHTML content in their body.
+    </xs:documentation>
+  </xs:annotation>
+
+  <!-- ======================================================================
+       Root element
+       ====================================================================== -->
+
+  <xs:element name="state">
+    <xs:annotation>
+      <xs:documentation>
+        Root state element for WikiOracle.  Contains a header with session
+        metadata, a conversations tree, and a truth table.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:complexType>
+      <xs:all>
+        <xs:element name="header" type="HeaderType"/>
+        <xs:element name="conversations" type="ConversationsType"/>
+        <xs:element name="truth" type="TruthTableType"/>
+      </xs:all>
+    </xs:complexType>
+  </xs:element>
+
+  <!-- ======================================================================
+       Header
+       ====================================================================== -->
+
+  <xs:complexType name="HeaderType">
+    <xs:annotation>
+      <xs:documentation>
+        Session metadata: schema version, timestamps, context window,
+        document title, selected conversation, and user GUID.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:all>
+      <xs:element name="version" type="xs:positiveInteger"/>
+      <xs:element name="schema" type="xs:string"/>
+      <xs:element name="time" type="xs:string"/>
+      <xs:element name="title" type="xs:string"/>
+      <xs:element name="context" type="XHTMLContentType"/>
+      <xs:element name="selected_conversation" type="xs:string" minOccurs="0"/>
+      <xs:element name="user_guid" type="xs:string" minOccurs="0"/>
+      <xs:element name="output" type="xs:string" minOccurs="0"/>
+    </xs:all>
+  </xs:complexType>
+
+  <!-- ======================================================================
+       Conversations (recursive tree)
+       ====================================================================== -->
+
+  <xs:complexType name="ConversationsType">
+    <xs:annotation>
+      <xs:documentation>
+        Container for the conversation tree.  Each conversation may
+        contain child conversations, forming a hierarchy.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:sequence>
+      <xs:element name="conversation" type="ConversationType"
+                  minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="ConversationType">
+    <xs:annotation>
+      <xs:documentation>
+        A single conversation node containing messages and optional
+        child conversations.  The id attribute is the unique identifier.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:sequence>
+      <xs:element name="title" type="xs:string"/>
+      <xs:element name="messages" type="MessagesType"/>
+      <xs:element name="children" type="ConversationsType" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="id" type="xs:string" use="required"/>
+    <xs:attribute name="parentId" type="xs:string" use="optional"/>
+  </xs:complexType>
+
+  <xs:complexType name="MessagesType">
+    <xs:sequence>
+      <xs:element name="message" type="MessageType"
+                  minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="MessageType">
+    <xs:annotation>
+      <xs:documentation>
+        A single message within a conversation.  Content is XHTML.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:sequence>
+      <xs:element name="content" type="XHTMLContentType"/>
+    </xs:sequence>
+    <xs:attribute name="id" type="xs:string" use="required"/>
+    <xs:attribute name="role" use="required">
+      <xs:simpleType>
+        <xs:restriction base="xs:string">
+          <xs:enumeration value="user"/>
+          <xs:enumeration value="assistant"/>
+          <xs:enumeration value="system"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:attribute>
+    <xs:attribute name="username" type="xs:string" use="required"/>
+    <xs:attribute name="time" type="xs:string" use="required"/>
+  </xs:complexType>
+
+  <!-- ======================================================================
+       Truth table
+       ====================================================================== -->
+
+  <xs:complexType name="TruthTableType">
+    <xs:annotation>
+      <xs:documentation>
+        Flat array of truth entries.  Each entry carries self-describing
+        XHTML content (fact, feeling, reference, operator, provider,
+        authority).
+      </xs:documentation>
+    </xs:annotation>
+    <xs:sequence>
+      <xs:element name="entry" type="TruthEntryType"
+                  minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="TruthEntryType">
+    <xs:annotation>
+      <xs:documentation>
+        A single truth entry.  The body contains self-describing XHTML
+        (fact, feeling, reference, and/or/not/non, provider, authority).
+        Trust is on the Strong Kleene scale [-1, +1].
+      </xs:documentation>
+    </xs:annotation>
+    <xs:sequence>
+      <xs:element name="content" type="XHTMLContentType"/>
+    </xs:sequence>
+    <xs:attribute name="id" type="xs:string" use="required"/>
+    <xs:attribute name="title" type="xs:string" use="optional"/>
+    <xs:attribute name="trust" type="xs:decimal" use="optional"/>
+    <xs:attribute name="time" type="xs:string" use="optional"/>
+    <xs:attribute name="arg1" type="xs:string" use="optional"/>
+    <xs:attribute name="arg2" type="xs:string" use="optional"/>
+  </xs:complexType>
+
+  <!-- ======================================================================
+       XHTML content (mixed, allows any child elements)
+       ====================================================================== -->
+
+  <xs:complexType name="XHTMLContentType" mixed="true">
+    <xs:annotation>
+      <xs:documentation>
+        Mixed content type that allows XHTML fragments.  The content
+        may contain text, fact/feeling/reference tags, and any other
+        well-formed XML elements.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:sequence>
+      <xs:any minOccurs="0" maxOccurs="unbounded" processContents="lax"/>
+    </xs:sequence>
+  </xs:complexType>
+
+</xs:schema>

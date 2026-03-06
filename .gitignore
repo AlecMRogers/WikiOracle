@@ -1,5 +1,6 @@
 #
 *.pem
+*.xml
 *~
 .venv*/
 .ec2/
@@ -10,8 +11,9 @@ __pycache__/
 .DS_Store
 /llm.jsonl
 *.merged
-/config.yaml
+
 /conversations/*.json
 /conversations/*.jsonl
 /bin/__pycache__/
 data/checkpoints/
+data/conversations/

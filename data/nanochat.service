@@ -4,7 +4,7 @@
 #
 # Runs the NanoChat inference server with WikiOracle's /train extension.
 # Listens on 127.0.0.1:8000 (internal only — not exposed via reverse proxy).
-# The WikiOracle chat shim (wikioracle-chat.service) calls it via
+# The WikiOracle chat shim (wikioracle.service) calls it via
 # WIKIORACLE_BASE_URL=http://127.0.0.1:8000.
 
 [Unit]
@@ -16,7 +16,7 @@ Type=simple
 User=bitnami
 WorkingDirectory=/opt/bitnami/wordpress/files/wikiOracle.org/nanochat
 ExecStart=/opt/bitnami/wordpress/files/wikiOracle.org/nanochat/.venv/bin/python3 \
-    /opt/bitnami/wordpress/files/wikiOracle.org/chat/bin/start_nanochat.py \
+    /opt/bitnami/wordpress/files/wikiOracle.org/chat/bin/nanochat_ext.py \
     --host 127.0.0.1 --port 8000
 Restart=on-failure
 RestartSec=5

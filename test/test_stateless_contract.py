@@ -44,7 +44,7 @@ def _make_state(**overrides):
 
 
 def _make_runtime_config(**overrides):
-    """Create a runtime_config dict (parsed config.yaml)."""
+    """Create a runtime_config dict (parsed config)."""
     base = {
         "user": {"name": "TestUser"},
         "chat": {
@@ -180,10 +180,10 @@ class TestStatelessChatNoDiskWrites(StatelessContractBase):
             self.assertEqual(mtime_before, mtime_after,
                              "State file was modified during stateless chat")
 
-    def test_no_config_yaml_write(self):
-        """Stateless chat must not write config.yaml to disk."""
+    def test_no_config_xml_write(self):
+        """Stateless chat must not write config.xml to disk."""
         project_root = Path(__file__).resolve().parent.parent
-        cfg_path = project_root / "config.yaml"
+        cfg_path = project_root / "config.xml"
         had_config = cfg_path.exists()
         mtime_before = cfg_path.stat().st_mtime if had_config else None
 
@@ -198,7 +198,7 @@ class TestStatelessChatNoDiskWrites(StatelessContractBase):
         if had_config:
             mtime_after = cfg_path.stat().st_mtime
             self.assertEqual(mtime_before, mtime_after,
-                             "config.yaml was modified during stateless chat")
+                             "config.xml was modified during stateless chat")
 
 
 class TestStatelessChatUsesRequestPayload(StatelessContractBase):
@@ -225,7 +225,7 @@ class TestStatelessChatUsesRequestPayload(StatelessContractBase):
             self.assertGreater(len(returned_state.get("conversations", [])), 0)
 
     def test_uses_runtime_config_user_name(self):
-        """The user display name in messages comes from runtime_config, not _CONFIG_YAML."""
+        """The user display name in messages comes from runtime_config, not _CONFIG."""
         rt = _make_runtime_config()
         rt["user"]["name"] = "RuntimeUser"
 
@@ -261,7 +261,7 @@ class TestBootstrapEndpoint(StatelessContractBase):
     def test_bootstrap_returns_config(self):
         resp = self.client.get("/bootstrap")
         data = resp.get_json()
-        self.assertNotIn("config_yaml", data)  # raw YAML no longer sent
+        self.assertNotIn("config_yaml", data)  # legacy key no longer sent
         self.assertNotIn("parsed", data)        # no more parsed/config split
         self.assertIn("config", data)
         self.assertIsInstance(data["config"], dict)
@@ -276,7 +276,7 @@ class TestBootstrapEndpoint(StatelessContractBase):
         self.assertIn("name", provs["wikioracle"])
 
     def test_bootstrap_config_has_expected_keys(self):
-        """Config in bootstrap response has YAML-shaped keys."""
+        """Config in bootstrap response has expected nested keys."""
         resp = self.client.get("/bootstrap")
         data = resp.get_json()
         c = data["config"]
@@ -285,7 +285,7 @@ class TestBootstrapEndpoint(StatelessContractBase):
         self.assertIn("ui", c)
         self.assertIn("chat", c)
         self.assertIn("server", c)
-        # YAML-shaped sub-keys (not flat)
+        # Nested sub-keys (not flat)
         self.assertIn("name", c["user"])
         self.assertIn("default_provider", c["ui"])
         self.assertIn("layout", c["ui"])
@@ -356,7 +356,7 @@ class TestStatelessExistingEndpoints(StatelessContractBase):
         self.assertEqual(resp.status_code, 403)
 
     def test_config_post_returns_403(self):
-        resp = self.client.post("/config", json={"yaml": ""})
+        resp = self.client.post("/config", json={"config": {}})
         self.assertEqual(resp.status_code, 403)
 
     def test_config_post_returns_403(self):

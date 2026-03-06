@@ -24,7 +24,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional
 
 import requests
 
-from config import Config, DEBUG_MODE, PROVIDERS, STATELESS_MODE, _load_config_yaml, _PROVIDER_MODELS
+from config import Config, DEBUG_MODE, PROVIDERS, STATELESS_MODE, _load_config, _PROVIDER_MODELS
 from sensation import preprocess_training_example
 from truth import (
     _fetch_authority_jsonl,
@@ -56,6 +56,8 @@ from state import (
     merge_llm_states,
     normalize_conversation,
     atomic_write_jsonl,
+    atomic_write_xml,
+    state_to_xml,
 )
 
 
@@ -505,8 +507,9 @@ def _format_sources(sources: List[Source]) -> str:
                 f"{content}"
             )
         else:
+            trust_str = f"{s.trust:.2f}" if s.trust is not None else "n/a"
             lines.append(
-                f"- [{title}] (id: {s.source_id}, trust: {s.trust:.2f}): "
+                f"- [{title}] (id: {s.source_id}, trust: {trust_str}): "
                 f"{content}"
             )
     return "\n".join(lines)
@@ -686,13 +689,21 @@ def _load_state(cfg: Config, *, strict: bool = True) -> Dict[str, Any]:
 
 
 def _save_state(cfg: Config, state: Dict[str, Any]) -> None:
-    """Normalize, size-check, and atomically persist state to disk."""
+    """Normalize, size-check, and atomically persist state to disk.
+
+    Writes XML when the state file has an ``.xml`` extension; falls back
+    to JSONL otherwise.
+    """
     normalized = ensure_minimal_state(state, strict=True)
     normalized["time"] = utc_now_iso()
+    # Size check (use JSON for estimation — close enough for both formats)
     serialized = json.dumps(normalized, ensure_ascii=False)
     if len(serialized.encode("utf-8")) > cfg.max_state_bytes:
         raise StateValidationError("State exceeds MAX_STATE_BYTES")
-    atomic_write_jsonl(cfg.state_file, normalized, reject_symlinks=cfg.reject_symlinks)
+    if cfg.state_file.suffix.lower() == ".xml":
+        atomic_write_xml(cfg.state_file, normalized, reject_symlinks=cfg.reject_symlinks)
+    else:
+        atomic_write_jsonl(cfg.state_file, normalized, reject_symlinks=cfg.reject_symlinks)
 
 
 # ---------------------------------------------------------------------------
@@ -1016,8 +1027,8 @@ def _call_provider(cfg: Config, bundle: ProviderBundle | None, temperature: floa
             effective_cfg["api_key"] = client_api_key
     if not effective_cfg.get("api_key"):
         if not config_mod.STATELESS_MODE:
-            # Hot-reload config.yaml in case keys were added after server start
-            fresh = _load_config_yaml()
+            # Hot-reload config.xml in case keys were added after server start
+            fresh = _load_config()
             fresh_key = (fresh.get("providers", {}).get(provider) or {}).get("api_key", "")
             if fresh_key:
                 effective_cfg["api_key"] = fresh_key
@@ -1025,7 +1036,7 @@ def _call_provider(cfg: Config, bundle: ProviderBundle | None, temperature: floa
                 if provider in PROVIDERS:
                     PROVIDERS[provider]["api_key"] = fresh_key
         if not effective_cfg.get("api_key"):
-            return f"[No API key for {provider}. Add it to config.yaml.]"
+            return f"[No API key for {provider}. Add it to config.xml.]"
     if provider == "openai":
         if DEBUG_MODE:
             print(f"[DEBUG] → _call_openai ({effective_cfg.get('url', '?')}, model={effective_cfg.get('default_model')})")
@@ -1071,9 +1082,9 @@ def _resolve_dynamic_api_key(raw_key: str, api_url: str) -> str:
                 matched_provider_key = _key
                 break
 
-    # Hot-reload config.yaml (mirrors _call_provider hot-reload logic)
+    # Hot-reload config.xml (mirrors _call_provider hot-reload logic)
     if matched_provider_key and not config_mod.STATELESS_MODE:
-        fresh = _load_config_yaml()
+        fresh = _load_config()
         fresh_key = (fresh.get("providers", {}).get(matched_provider_key) or {}).get("api_key", "")
         if fresh_key:
             if matched_provider_key in PROVIDERS:
@@ -1310,7 +1321,9 @@ def _scan_and_merge_imports(cfg: Config) -> Dict[str, Any]:
     state = ensure_minimal_state(state, strict=True)
 
     root = cfg.state_file.parent
-    candidates = sorted(list(root.glob("llm_*.jsonl")) + list(root.glob("llm_*.json")))
+    candidates = sorted(
+        list(root.glob("llm_*.jsonl")) + list(root.glob("llm_*.json")) + list(root.glob("llm_*.xml"))
+    )
     for path in candidates:
         if path.resolve() == cfg.state_file:
             continue
@@ -1381,21 +1394,21 @@ def process_chat(
     user_msg = (body.get("message") or "").strip()
     query_config = body.get("config", {}) if isinstance(body.get("config"), dict) else {}
 
-    yaml_chat = runtime_cfg.get("chat", {})
+    cfg_chat = runtime_cfg.get("chat", {})
     provider = query_config.get("provider", "wikioracle")
     client_model = (query_config.get("model") or "").strip()
     print(f"[WikiOracle] Chat request: provider='{provider}' (from client config), "
           f"rag={query_config.get('chat', {}).get('rag', '?')}")
 
     temperature = max(0.0, min(2.0, float(
-        query_config.get("temp", yaml_chat.get("temperature", 0.7))
+        query_config.get("temp", cfg_chat.get("temperature", 0.7))
     )))
     # Chat settings live at query_config.chat.{rag, url_fetch, ...}.
-    # The client sends these directly; fill in defaults from config.yaml.
+    # The client sends these directly; fill in defaults from config.xml.
     if "chat" not in query_config or not isinstance(query_config.get("chat"), dict):
         query_config["chat"] = {}
-    query_config["chat"].setdefault("rag", yaml_chat.get("rag", True))
-    query_config["chat"].setdefault("url_fetch", yaml_chat.get("url_fetch", False))
+    query_config["chat"].setdefault("rag", cfg_chat.get("rag", True))
+    query_config["chat"].setdefault("url_fetch", cfg_chat.get("url_fetch", False))
 
     conversation_id = body.get("conversation_id")
     branch_from = body.get("branch_from")

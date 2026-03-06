@@ -32,7 +32,7 @@ Recommended reading order:
 - [`Voting.md`](./Voting.md): voting protocol — dom steering, sub fan-out, cycle prevention, `<feeling>` as truth type, truth-only output.
 - [`FreedomEmpathyTruth.md`](./FreedomEmpathyTruth.md): Freedom, Empathy, and Truth — safety principles and architectural commitments.
 - [`Security.md`](./Security.md): local-first security considerations (keys, CSP/XSS, CORS, filesystem, scraping/capture).
-- [`Architecture.md`](./Architecture.md): implementation architecture (Flask shim + UI + `llm.jsonl` state model).
+- [`Architecture.md`](./Architecture.md): implementation architecture (Flask shim + UI + `state.xml` state model).
 - [`Training.md`](./Training.md): DegreeOfTruth (−1..+1), Korzybski IS detection (Sensation preprocessing), online training pipeline, checkpoint backup/restore, Hopfield network dynamics.
 - [`Installation.md`](./Installation.md): build, deploy, and runtime instructions.
 - [`FutureWork.md`](./FutureWork.md): future directions (trust network, sentence-level prediction, conceptual-space operations, MCP integration).

@@ -39,7 +39,7 @@ t  = st + dynamic_truth(st)         # operators, authorities, providers evaluate
 
 The dynamic phase evaluates structural entries against the static set: operators propagate derived certainty via Strong Kleene semantics, authorities fetch remote truth tables, and providers call external LLM endpoints whose responses become sources. The UI-selected provider always handles the final response; it receives all `state.truth` entries plus the dynamic results and synthesises an answer.
 
-This separation means that the "experts" (dynamic provider entries) contribute knowledge, operators compute derived certainty, and authorities supply external evidence, while the "mastermind" (UI-selected provider) integrates everything with conversation history and context. API keys are never conflated: each provider uses its own key, whether configured in `config.yaml` or embedded in the truth entry.
+This separation means that the "experts" (dynamic provider entries) contribute knowledge, operators compute derived certainty, and authorities supply external evidence, while the "mastermind" (UI-selected provider) integrates everything with conversation history and context. API keys are never conflated: each provider uses its own key, whether configured in `config.xml` or embedded in the truth entry.
 
 See [Architecture.md](./Architecture.md) for the implementation details of the chat pipeline.
 

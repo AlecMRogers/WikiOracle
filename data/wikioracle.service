@@ -1,6 +1,6 @@
-# WikiOracle Chat Shim — systemd service
-# Install: sudo cp wikioracle-chat.service /etc/systemd/system/
-#          sudo systemctl daemon-reload && sudo systemctl enable wikioracle-chat
+# WikiOracle — systemd service
+# Install: sudo cp wikioracle.service /etc/systemd/system/
+#          sudo systemctl daemon-reload && sudo systemctl enable wikioracle
 #
 # The shim runs in stateless mode behind the WordPress/Apache reverse proxy.
 # Apache ProxyPass /chat http://127.0.0.1:8787/chat
@@ -27,7 +27,7 @@ Environment=WIKIORACLE_BIND_HOST=127.0.0.1
 Environment=WIKIORACLE_BIND_PORT=8787
 Environment=WIKIORACLE_BASE_URL=http://127.0.0.1:8000
 Environment=WIKIORACLE_API_PATH=/chat/completions
-Environment=WIKIORACLE_STATE_FILE=/opt/bitnami/wordpress/files/wikiOracle.org/chat/llm.jsonl
+Environment=WIKIORACLE_STATE_FILE=/opt/bitnami/wordpress/files/wikiOracle.org/chat/state.xml
 # Set WIKIORACLE_API_TOKEN to require bearer-token auth on all endpoints.
 # Generate with: python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 #Environment=WIKIORACLE_API_TOKEN=

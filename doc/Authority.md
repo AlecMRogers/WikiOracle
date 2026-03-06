@@ -2,7 +2,7 @@
 
 ## Transitive trust in WikiOracle's truth system
 
-An **authority** is a trust entry that references an external agent's knowledge base. Instead of containing facts directly, an `<authority>` entry points to a remote `llm.jsonl` file. At evaluation time, the server fetches that file, extracts its trust entries, and merges them into the local trust table with certainty scaled by the authority's own certainty value.
+An **authority** is a trust entry that references an external agent's knowledge base. Instead of containing facts directly, an `<authority>` entry points to a remote state file. At evaluation time, the server fetches that file, extracts its trust entries, and merges them into the local trust table with certainty scaled by the authority's own certainty value.
 
 The key principle: **we trust what they trust, with some degree of certainty.**
 
@@ -32,7 +32,7 @@ Authority entries are trust entries whose `content` field contains an `<authorit
 Fields inside `<authority>`:
 - `did` — Decentralized Identifier (optional; at least one of did/orcid should be present)
 - `orcid` — ORCID identifier (optional)
-- `url` — URL to a remote `llm.jsonl` file (required). May be `https://` or `file://` (within allowed data dir)
+- `url` — URL to a remote state file (required). May be `https://` or `file://` (within allowed data dir)
 - `refresh` — seconds between re-fetches (optional, default: 3600)
 
 Both attribute-style (`<authority did="..." url="..." />`) and child-element style (`<authority><did>...</did><url>...</url></authority>`) are supported, following the same pattern as `<provider>`.
@@ -60,7 +60,7 @@ This preserves the [-1, +1] Kleene range and naturally dampens remote beliefs pr
 
 ## Abbreviated JSONL
 
-The remote `llm.jsonl` file may be **abbreviated** — it does not need to contain a header or conversation records. Lines that are valid JSON with `"type": "truth"` are extracted; all other lines (headers, conversations, malformed JSON) are skipped.
+The remote state file may be **abbreviated** — it does not need to contain a header or conversation records. Lines that are valid JSON with `"type": "truth"` are extracted; all other lines (headers, conversations, malformed JSON) are skipped.
 
 Example abbreviated file:
 ```jsonl
@@ -108,6 +108,6 @@ This means the same remote entry imported through different authorities will hav
 | `bin/truth.py` | `parse_authority_block()`, `ensure_authority_id()`, `get_authority_entries()`, `resolve_authority_entries()`, `_fetch_authority_jsonl()` |
 | `bin/response.py` | Excludes `<authority>` entries from RAG; resolves authority entries and includes their scaled trust entries as `kind="authority"` sources |
 | `html/util.js` | Trust editor UI: unified XHTML textarea with authority template, authority badge display |
-| `data/hme.jsonl` | Test data with example authority entry (`auth_test_01`) |
-| `data/hme_authority_fragment.jsonl` | Test fragment JSONL with two remote trust entries |
+| `test/hme.xml` | Test data with example authority entry (`auth_test_01`) |
+| `test/hme_authority_fragment.xml` | Test fragment XML with two remote trust entries |
 | `tests/test_authority.py` | Unit tests covering parsing, ID generation, resolution, certainty scaling, and security |

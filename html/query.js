@@ -131,7 +131,7 @@ function _mergeResponseConversation(localConvs, responseBundle) {
 }
 
 // Build the runtime_config dict from the current config (stateless).
-// This is the YAML-shaped config that the server needs for
+// This is the config that the server needs for
 // provider resolution, chat settings, and user display name.
 function _buildRuntimeConfig() {
   return config || {};

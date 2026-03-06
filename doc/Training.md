@@ -92,7 +92,7 @@ assistant messages in `<R>...</R>`.  Each sentence within a message is
 independently classified as `<fact>` or `<feeling>`:
 
     <R><feeling>That is a great question!</feeling>
-    <fact trust="0.5" spacetime="[unverified]">Paris is the capital of France.</fact>
+    <fact trust="0.5"><place>Paris</place>Paris is the capital of France.</fact>
     <feeling>I hope that helps.</feeling></R>
 
 ### Korzybski IS Detection
@@ -122,8 +122,9 @@ The heuristic classifier in `sensation.py` detects these patterns:
 Sentences without an IS pattern, or with subjective markers ("I think",
 "maybe", "might be"), questions, or meta-discourse ("That's a great
 question") default to `<feeling>`.  Auto-detected facts receive
-`trust=0.5` and `spacetime="[unverified]"` — conservative defaults that
-flag them for future verification.
+`trust=0.5` — a conservative default that flags them for future
+verification.  Spatiotemporal binding is expressed via `<place>` and
+`<time>` child elements inside `<fact>` or `<feeling>` tags.
 
 ### Usage
 
@@ -136,7 +137,7 @@ Classify a single sentence:
 
     python bin/sensation.py tag "Paris is the capital of France."
     # → Classification: fact (identity)
-    # → Tagged: <Q><fact trust="0.5" spacetime="[unverified]">...</fact></Q>
+    # → Tagged: <Q><fact trust="0.5">Paris is the capital of France.</fact></Q>
 
 In the online training pipeline, `response.py` calls
 `preprocess_training_example()` automatically before each `/train` POST,
@@ -153,20 +154,27 @@ fit the collective evidence.
 
 WikiOracle accomplishes this by:
 
-1. Maintaining a **server‑owned truth table** (`truth.jsonl`) that
+1. Maintaining a **server‑owned truth table** (`truth.xml`) that
    accumulates facts from all users.
 2. Computing a **DegreeOfTruth** (−1 .. +1) per interaction.
 3. Using |DegreeOfTruth| to modulate the **learning rate** of a
    one‑step online training pass in NanoChat.
 
-Conversations are **not** stored on the server.  Only truth entries
-are retained.  The server truth table contains facts, operators,
-authorities, and references — no feelings or provider entries.
+Conversations are **not** stored on the server.  Only **knowledge** truth
+entries are retained.  The server truth table contains knowledge facts,
+operators, authorities, and references — no feelings, provider entries,
+or **news facts** (spatiotemporally bound observations).
+
+News facts (those with `<place>` or `<time>` child elements carrying real
+values) are session-only.  Persisting them would risk "worldline
+capture" — an observer could reconstruct a user's physical trajectory
+through spatiotemporal observations.  The `filter_knowledge_only()`
+function in `bin/truth.py` enforces this boundary.
 
 ### User Identity
 
 Each user is identified by a pseudonymous GUID derived deterministically
-from `user.name` in config.yaml (UUID‑5 in the WikiOracle namespace).
+from `user.name` in the config file (UUID‑5 in the WikiOracle namespace).
 This GUID is stored at the root level of the user's state and used as
 the author field when merging truth entries into the server table.
 
@@ -189,7 +197,7 @@ and training happen after the response is delivered.
 **Stage 3 — Update server truth table**
 
 5. Merge the user's truth entries into the server truth table
-   (`truth.jsonl`):
+   (`truth.xml`):
    - **Match found**: nudge the server entry's trust toward the incoming
      value using a slow‑moving average:
      `server_trust += merge_rate × (client_trust − server_trust)`
@@ -211,7 +219,7 @@ and training happen after the response is delivered.
 ### Device Configuration
 
 Online training runs on the device specified by
-`server.online_training.device` in `config.yaml`.  Valid values:
+`server.online_training.device` in the config file (`config.xml`).  Valid values:
 
 - `cpu` (default) — safe for the WikiOracle production server
 - `cuda` — use NVIDIA GPU if available
@@ -222,16 +230,27 @@ moved back to the inference device afterward.
 
 ### Server Truth Table
 
-The server truth table is stored as `truth.jsonl` in the same JSONL
-format used for state files.  Each line is a truth entry:
+The server truth table is stored as `truth.xml` in the same XML format
+used for state files (WikiOracle State).  Each truth entry is an
+`<entry>` element:
 
-    {"type": "truth", "id": "...", "title": "...", "certainty": 0.8,
-     "content": "<fact>...</fact>", "time": "...", "author": "user-guid"}
+```xml
+<entry id="..." title="..." trust="0.8" time="..." author="user-guid">
+  <content><fact trust="0.8">All men are mortal.</fact></content>
+</entry>
+```
 
-Entry types stored: `<fact>`, `<reference>`, `<authority>`, and operators
-(`<and>`, `<or>`, `<not>`, `<non>`).
+Entry types stored: `<fact>` (knowledge — no `<place>`/`<time>` children),
+`<reference>`, `<authority>`, and operators (`<and>`, `<or>`, `<not>`, `<non>`).
 
-Entry types **not** stored: `<feeling>`, `<provider>`.
+Entry types **not** stored: `<feeling>`, `<provider>`, news facts
+(facts with `<place>` or `<time>` child elements).
+
+News facts are excluded because they are spatiotemporally bound — persisting
+them risks worldline capture.  News facts are identified by the presence
+of `<place>` or `<time>` child elements with real values (not placeholders
+like "[unverified]" or "unknown").  See `filter_knowledge_only()` in
+`bin/truth.py` and `detect_identity_collapse()` for PII detection.
 
 The server truth table includes the user GUID as a trust entry, so the
 server can track per‑user trust alongside factual claims.
