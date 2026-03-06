@@ -522,7 +522,6 @@ async function saveSettings() {
 }
 
 // ─── Config editor (edit config.xml) ───
-// Uses js-yaml (loaded via CDN) for the editor UI.
 // Server never sees raw text — only parsed dicts via POST /config.
 async function _openConfigEditor() {
   // Close the settings panel first
@@ -544,7 +543,7 @@ async function _openConfigEditor() {
     document.getElementById("cfgReset").addEventListener("click", function() {
       var factory = _normalizeConfig({});
       if (factory.server) delete factory.server.providers;
-      document.getElementById("configEditorTextarea").value = jsyaml.dump(factory, { lineWidth: -1 });
+      document.getElementById("configEditorTextarea").value = configToXml(factory);
     });
     document.getElementById("cfgCancel").addEventListener("click", dlg.close);
     document.getElementById("cfgOk").addEventListener("click", async function() {
@@ -552,18 +551,10 @@ async function _openConfigEditor() {
       const errEl = document.getElementById("configEditorError");
       errEl.style.display = "none";
 
-      // Parse YAML client-side via js-yaml
-      var parsed;
-      try {
-        parsed = jsyaml.load(textarea.value);
-        if (parsed !== null && typeof parsed !== "object") {
-          errEl.textContent = "Config must be a valid mapping";
-          errEl.style.display = "block";
-          return;
-        }
-        parsed = parsed || {};
-      } catch (e) {
-        errEl.textContent = "YAML parse error: " + e.message;
+      // Parse XML client-side
+      var parsed = xmlToConfig(textarea.value);
+      if (parsed === null) {
+        errEl.textContent = "XML parse error: check that the document is well-formed.";
         errEl.style.display = "block";
         return;
       }
@@ -615,14 +606,14 @@ async function _openConfigEditor() {
       const data = await api("GET", "/config");
       parsed = data.config || {};
     } catch (e) {
-      textarea.value = "# Error loading config: " + e.message;
+      textarea.value = "<!-- Error loading config: " + e.message + " -->";
       textarea.focus();
       return;
     }
   }
   // Strip runtime-only field before showing in editor
   if (parsed && parsed.server) delete parsed.server.providers;
-  textarea.value = jsyaml.dump(parsed || {}, { lineWidth: -1 });
+  textarea.value = configToXml(parsed || {});
   textarea.focus();
 }
 

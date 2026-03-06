@@ -81,6 +81,185 @@ function _normalizeConfig(cfg) {
   return cfg;
 }
 
+// ─── XML serializer / parser (config editor) ───
+
+// Coerce XML text to bool / number / string (matches server _xml_coerce).
+function _xmlCoerce(text) {
+  if (text === undefined || text === null) return "";
+  var s = text.trim();
+  if (s.toLowerCase() === "true") return true;
+  if (s.toLowerCase() === "false") return false;
+  if (s !== "" && !isNaN(s)) {
+    var n = Number(s);
+    if (isFinite(n)) return n;
+  }
+  return s;
+}
+
+function _xmlValStr(v) {
+  if (typeof v === "boolean") return v ? "true" : "false";
+  if (v === null || v === undefined) return "";
+  return String(v);
+}
+
+function _xmlEsc(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+// Serialize config dict → XML string (matches server config_to_xml).
+function configToXml(obj) {
+  if (!obj || typeof obj !== "object") return '<?xml version="1.0" encoding="UTF-8"?>\n<config/>\n';
+  var lines = ['<?xml version="1.0" encoding="UTF-8"?>', "<config>"];
+
+  function addSimpleSection(tag, data) {
+    if (!data || typeof data !== "object") return;
+    lines.push("  <" + tag + ">");
+    for (var key in data) {
+      if (!data.hasOwnProperty(key)) continue;
+      lines.push("    <" + key + ">" + _xmlEsc(_xmlValStr(data[key])) + "</" + key + ">");
+    }
+    lines.push("  </" + tag + ">");
+  }
+
+  // user
+  addSimpleSection("user", obj.user);
+
+  // providers — <provider name="key"> with display_name mapping
+  var provs = obj.providers;
+  if (provs && typeof provs === "object") {
+    lines.push("  <providers>");
+    for (var pk in provs) {
+      if (!provs.hasOwnProperty(pk)) continue;
+      var prov = provs[pk];
+      if (!prov || typeof prov !== "object") continue;
+      lines.push('    <provider name="' + _xmlEsc(pk) + '">');
+      for (var fk in prov) {
+        if (!prov.hasOwnProperty(fk)) continue;
+        var xmlTag = fk === "name" ? "display_name" : fk;
+        lines.push("      <" + xmlTag + ">" + _xmlEsc(_xmlValStr(prov[fk])) + "</" + xmlTag + ">");
+      }
+      lines.push("    </provider>");
+    }
+    lines.push("  </providers>");
+  }
+
+  // chat, ui
+  addSimpleSection("chat", obj.chat);
+  addSimpleSection("ui", obj.ui);
+
+  // server — special handling for online_training and allowed_urls
+  var srv = obj.server;
+  if (srv && typeof srv === "object") {
+    lines.push("  <server>");
+    for (var sk in srv) {
+      if (!srv.hasOwnProperty(sk)) continue;
+      if (sk === "providers") continue; // runtime-only, strip
+      if (sk === "online_training" && typeof srv[sk] === "object") {
+        lines.push("    <online_training>");
+        var ot = srv[sk];
+        for (var otk in ot) {
+          if (!ot.hasOwnProperty(otk)) continue;
+          lines.push("      <" + otk + ">" + _xmlEsc(_xmlValStr(ot[otk])) + "</" + otk + ">");
+        }
+        lines.push("    </online_training>");
+      } else if (sk === "allowed_urls" && Array.isArray(srv[sk])) {
+        lines.push("    <allowed_urls>");
+        srv[sk].forEach(function(u) { lines.push("      <url>" + _xmlEsc(u) + "</url>"); });
+        lines.push("    </allowed_urls>");
+      } else {
+        lines.push("    <" + sk + ">" + _xmlEsc(_xmlValStr(srv[sk])) + "</" + sk + ">");
+      }
+    }
+    lines.push("  </server>");
+  }
+
+  // defaults
+  addSimpleSection("defaults", obj.defaults);
+
+  lines.push("</config>");
+  return lines.join("\n") + "\n";
+}
+
+// Parse XML string → config dict (matches server _load_config_xml).
+// Returns null on parse error.
+function xmlToConfig(text) {
+  try {
+    var parser = new DOMParser();
+    var doc = parser.parseFromString(text, "application/xml");
+    var err = doc.querySelector("parsererror");
+    if (err) return null;
+    var root = doc.documentElement;
+    if (root.tagName !== "config") return null;
+    var data = {};
+
+    function readSimple(el) {
+      var obj = {};
+      for (var i = 0; i < el.children.length; i++) {
+        var child = el.children[i];
+        obj[child.tagName] = _xmlCoerce(child.textContent);
+      }
+      return obj;
+    }
+
+    // user
+    var userEl = root.querySelector("user");
+    if (userEl) data.user = readSimple(userEl);
+
+    // providers
+    var provsEl = root.querySelector("providers");
+    if (provsEl) {
+      data.providers = {};
+      var provEls = provsEl.querySelectorAll("provider");
+      provEls.forEach(function(pel) {
+        var key = pel.getAttribute("name") || "";
+        var prov = {};
+        for (var i = 0; i < pel.children.length; i++) {
+          var child = pel.children[i];
+          var tag = child.tagName === "display_name" ? "name" : child.tagName;
+          prov[tag] = _xmlCoerce(child.textContent);
+        }
+        data.providers[key] = prov;
+      });
+    }
+
+    // chat
+    var chatEl = root.querySelector("chat");
+    if (chatEl) data.chat = readSimple(chatEl);
+
+    // ui
+    var uiEl = root.querySelector("ui");
+    if (uiEl) data.ui = readSimple(uiEl);
+
+    // server
+    var srvEl = root.querySelector("server");
+    if (srvEl) {
+      var srv = {};
+      for (var i = 0; i < srvEl.children.length; i++) {
+        var child = srvEl.children[i];
+        if (child.tagName === "online_training") {
+          srv.online_training = readSimple(child);
+        } else if (child.tagName === "allowed_urls") {
+          var urls = [];
+          var urlEls = child.querySelectorAll("url");
+          urlEls.forEach(function(u) { var t = u.textContent.trim(); if (t) urls.push(t); });
+          srv.allowed_urls = urls;
+        } else {
+          srv[child.tagName] = _xmlCoerce(child.textContent);
+        }
+      }
+      data.server = srv;
+    }
+
+    // defaults
+    var defEl = root.querySelector("defaults");
+    if (defEl) data.defaults = readSimple(defEl);
+
+    return data;
+  } catch (e) {
+    return null;
+  }
+}
+
 // ─── Legacy migration ───
 
 // One-time migration: wikioracle_prefs → XML-shaped config
