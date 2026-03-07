@@ -53,7 +53,7 @@ def _make_non(entry_id, ref, trust=0.0):
 
 
 def test_parse_operator_block_and():
-    content = '<and><child id="a"/><child id="b"/></and>'
+    content = '<and><reference id="a"/><reference id="b"/></and>'
     result = parse_operator_block(content)
     assert result is not None
     assert result["operator"] == "and"
@@ -61,7 +61,7 @@ def test_parse_operator_block_and():
 
 
 def test_parse_operator_block_or():
-    content = '<or><child id="x"/><child id="y"/><child id="z"/></or>'
+    content = '<or><reference id="x"/><reference id="y"/><reference id="z"/></or>'
     result = parse_operator_block(content)
     assert result is not None
     assert result["operator"] == "or"
@@ -69,7 +69,7 @@ def test_parse_operator_block_or():
 
 
 def test_parse_operator_block_not():
-    content = '<not><child id="a"/></not>'
+    content = '<not><reference id="a"/></not>'
     result = parse_operator_block(content)
     assert result is not None
     assert result["operator"] == "not"
@@ -77,7 +77,7 @@ def test_parse_operator_block_not():
 
 
 def test_parse_operator_block_non():
-    content = '<non><child id="a"/></non>'
+    content = '<non><reference id="a"/></non>'
     result = parse_operator_block(content)
     assert result is not None
     assert result["operator"] == "non"
@@ -86,19 +86,19 @@ def test_parse_operator_block_non():
 
 def test_parse_operator_block_non_rejects_multiple():
     """NON with more than 1 child should return None."""
-    content = '<non><child id="a"/><child id="b"/></non>'
+    content = '<non><reference id="a"/><reference id="b"/></non>'
     assert parse_operator_block(content) is None
 
 
 def test_parse_operator_block_not_rejects_multiple():
     """NOT with more than 1 child should return None."""
-    content = '<not><child id="a"/><child id="b"/></not>'
+    content = '<not><reference id="a"/><reference id="b"/></not>'
     assert parse_operator_block(content) is None
 
 
 def test_parse_operator_block_and_rejects_single():
     """AND with fewer than 2 children should return None."""
-    content = '<and><child id="a"/></and>'
+    content = '<and><reference id="a"/></and>'
     assert parse_operator_block(content) is None
 
 
@@ -121,12 +121,12 @@ def test_parse_operator_block_legacy_ref():
 
 
 def test_ensure_operator_id_preserves_existing():
-    entry = {"id": "existing_01", "content": '<and><child id="a"/><child id="b"/></and>'}
+    entry = {"id": "existing_01", "content": '<and><reference id="a"/><reference id="b"/></and>'}
     assert ensure_operator_id(entry) == "existing_01"
 
 
 def test_ensure_operator_id_generates():
-    entry = {"content": '<and><child id="a"/><child id="b"/></and>'}
+    entry = {"content": '<and><reference id="a"/><reference id="b"/></and>'}
     oid = ensure_operator_id(entry)
     # Generated IDs are deterministic UUIDs (36 chars with dashes).
     assert len(oid) == 36 and oid.count("-") == 4

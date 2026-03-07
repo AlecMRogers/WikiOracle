@@ -443,10 +443,10 @@ def build_query(
                 kind = "provider"
             elif "<authority" in content:
                 kind = "authority"
-            elif "<reference" in content:
-                kind = "reference"
             elif _has_operator_tag(content):
                 kind = "operator"
+            elif "<reference" in content:
+                kind = "reference"
             elif "<feeling" in content:
                 kind = "feeling"
             else:

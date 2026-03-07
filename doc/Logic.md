@@ -31,7 +31,7 @@ The key insight behind `non`: Kleene logic cannot detect uncertainty; it can onl
 
 ## Storage format (unified XHTML)
 
-All trust entries use a unified XHTML format where the root element carries `id`, `certainty`, and `title` attributes. Operator entries use `<and>`, `<or>`, `<not>`, or `<non>` root tags with `<child id="..."/>` self-closing children:
+All trust entries use a unified XHTML format where the root element carries `id`, `certainty`, and `title` attributes. Operator entries use `<and>`, `<or>`, `<not>`, or `<non>` root tags with `<reference id="..."/>` self-closing children (the same `<reference>` element used for external links, but with `id=` instead of `src=`):
 
 ```json
 {
@@ -39,7 +39,7 @@ All trust entries use a unified XHTML format where the root element carries `id`
   "id": "op_socrates_mortal",
   "title": "Socrates is mortal (AND of axioms)",
   "certainty": 0.0,
-  "content": "<and id=\"op_socrates_mortal\" certainty=\"0.0\" title=\"Socrates is mortal (AND of axioms)\"><child id=\"axiom_01\"/><child id=\"axiom_02\"/></and>",
+  "content": "<and id=\"op_socrates_mortal\" certainty=\"0.0\" title=\"Socrates is mortal (AND of axioms)\"><reference id=\"axiom_01\"/><reference id=\"axiom_02\"/></and>",
   "time": "2026-02-25T00:00:01Z"
 }
 ```
@@ -50,15 +50,15 @@ All trust entries use a unified XHTML format where the root element carries `id`
   "id": "op_not_penguin_fly",
   "title": "Penguins cannot fly (NOT)",
   "certainty": 0.0,
-  "content": "<not id=\"op_not_penguin_fly\" certainty=\"0.0\" title=\"Penguins cannot fly (NOT)\"><child id=\"false_01\"/></not>",
+  "content": "<not id=\"op_not_penguin_fly\" certainty=\"0.0\" title=\"Penguins cannot fly (NOT)\"><reference id=\"false_01\"/></not>",
   "time": "2026-02-25T00:00:04Z"
 }
 ```
 
 Rules:
-- `<and>` and `<or>` require 2 or more `<child>` children.
-- `<not>` and `<non>` require exactly 1 `<child>` child.
-- Each `<child id="..."/>` must name an existing trust entry ID.
+- `<and>` and `<or>` require 2 or more `<reference>` children.
+- `<not>` and `<non>` require exactly 1 `<reference>` child.
+- Each `<reference id="..."/>` must name an existing trust entry ID.
 - IDs are bare (no prefixes). UUIDs or human-readable slugs are both acceptable.
 - The `id` and `certainty` on the root element are canonical; envelope fields are synced from them during normalization.
 
@@ -133,7 +133,7 @@ The current operator set covers propositional logic under Strong Kleene semantic
 |---|---|
 | `bin/truth.py` | `parse_operator_block()`, `ensure_operator_id()`, `compute_derived_truth()`, `_eval_operator()` |
 | `bin/response.py` | Excludes operator entries from RAG via `_has_operator_tag()`; uses `_derived_certainty` for ranking |
-| `client/util.js` | Trust editor UI: unified XHTML textarea with template dropdown (AND/OR/NOT/NON), IDs visible for `<child id>` references |
+| `client/util.js` | Trust editor UI: unified XHTML textarea with template dropdown (AND/OR/NOT/NON), IDs visible for `<reference id>` refs |
 | `test/hme.xml` | Test data with AND, OR, NOT, NON operator entries |
 | `test/test_derived_truth.py` | Unit tests covering parsing, ID generation, and/or/not/non evaluation, chaining, cycles, and hme.xml integration |
 

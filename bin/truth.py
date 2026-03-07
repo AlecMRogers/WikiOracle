@@ -7,8 +7,8 @@ Foundational module for trust-table interpretation:
   - Subtypes (all self-describing XHTML with id/trust/title attrs):
       <fact>       — plain text assertion (penalizable if incorrect)
       <feeling>    — subjective claim (not penalizable if incorrect)
-      <reference>  — external link, canonically wrapping <a href="...">
-      <and>/<or>/<not>/<non> — operators with <child id="..."/> refs
+      <reference>  — external link (src=) or entry ref (id=) inside operators
+      <and>/<or>/<not>/<non> — operators with <reference id="..."/> refs
       <provider>   — LLM provider config (name, api_url, model attrs)
       <authority>  — remote trust table import (did, url attrs)
   - Strong Kleene operator engine (compute_derived_truth)
@@ -272,7 +272,7 @@ def _migrate_legacy_content(item: dict) -> str:
     Handles:
       - Plain <p> text → <fact>text</fact> (id/trust/title on JSON envelope)
       - Bare <a href>  → <reference href="...">text</reference>
-      - Old <and>/<or>/<not>/<non> with <ref>text</ref> → same tag with <child id="..."/>
+      - Old <and>/<or>/<not>/<non> with <ref>text</ref> → same tag with <reference id="..."/>
         Also extract child IDs to arg1/arg2 on the JSON entry for new format
       - <provider> → remove name and state_url attrs; convert state_url to nested <authority url="..."/>
       - <authority> → remove did and orcid attrs; keep url and refresh
@@ -301,7 +301,8 @@ def _migrate_legacy_content(item: dict) -> str:
     if parsed and parsed["tag"] in _RECOGNIZED_TAGS:
         return content
 
-    # Operator migration: <and><ref>x</ref>...</and> → <and><child id="x"/>...</and>
+    # Operator migration: <and><ref>x</ref>...</and> → <and><reference id="x"/>...</and>
+    # Also migrate <child id="x"/> → <reference id="x"/>
     # Also extract child IDs to arg1/arg2 on the JSON entry
     if _has_operator_tag(content):
         try:
@@ -311,18 +312,26 @@ def _migrate_legacy_content(item: dict) -> str:
         for tag in ("and", "or", "not", "non"):
             el = root.find(f".//{tag}")
             if el is not None:
-                # Migrate <ref>text</ref> → <child id="text"/>
+                # Migrate <ref>text</ref> → <reference id="text"/>
                 for ref_el in el.findall("ref"):
                     ref_id = (ref_el.text or "").strip()
-                    child_el = ET.SubElement(el, "child")
-                    child_el.set("id", ref_id)
-                    child_el.tail = ref_el.tail
+                    new_el = ET.SubElement(el, "reference")
+                    new_el.set("id", ref_id)
+                    new_el.tail = ref_el.tail
                     el.remove(ref_el)
 
-                # Extract child IDs for arg1/arg2 on JSON entry
-                child_ids = []
+                # Migrate <child id="x"/> → <reference id="x"/>
                 for child_el in el.findall("child"):
                     ref_id = (child_el.get("id") or "").strip()
+                    new_el = ET.SubElement(el, "reference")
+                    new_el.set("id", ref_id)
+                    new_el.tail = child_el.tail
+                    el.remove(child_el)
+
+                # Extract reference IDs for arg1/arg2 on JSON entry
+                child_ids = []
+                for ref_el in el.findall("reference"):
+                    ref_id = (ref_el.get("id") or "").strip()
                     if ref_id:
                         child_ids.append(ref_id)
 
@@ -392,7 +401,7 @@ def _migrate_legacy_content(item: dict) -> str:
             pass
         return content
 
-    # Reference migration: <a href="...">text</a> → <reference href="...">text</reference>
+    # Reference migration: <a href="...">text</a> → <reference src="...">text</reference>
     if "<a " in content:
         try:
             root = ET.fromstring(f"<root>{content}</root>")
@@ -400,7 +409,7 @@ def _migrate_legacy_content(item: dict) -> str:
             if a_el is not None:
                 href = a_el.get("href", "")
                 text = a_el.text or ""
-                return f'<reference href="{_esc_attr(href)}">{_esc_attr(text)}</reference>'
+                return f'<reference src="{_esc_attr(href)}">{_esc_attr(text)}</reference>'
         except ET.ParseError:
             pass
         return content
@@ -418,7 +427,7 @@ def _normalize_trust_entry(raw: Any) -> dict:
     New behavior (XHTML simplification):
     - XHTML content is no longer self-describing (no id/trust/title attrs)
     - Metadata (id, trust, title) lives on the JSON envelope only
-    - Operators use arg1/arg2 on the JSON entry instead of XHTML <child> elements
+    - Operators use arg1/arg2 on the JSON entry or <reference id="..."/> in XHTML
     - Authority and Provider elements no longer have did/orcid or name/state_url
     """
     item = dict(raw) if isinstance(raw, dict) else {}
@@ -898,13 +907,14 @@ def parse_operator_block(content: str, entry: dict | None = None) -> dict | None
     """Parse the first <and>, <or>, <not>, or <non> operator block from trust-entry content.
 
     Returns { operator: "and"|"or"|"not"|"non", refs: [id, ...] } or None.
-    - <and> and <or> require 2+ <child> elements.
-    - <not> and <non> require exactly 1 <child> element.
+    - <and> and <or> require 2+ <reference> elements.
+    - <not> and <non> require exactly 1 <reference> element.
 
     Operator references come from (in priority order):
     1. entry.arg1 and entry.arg2 (if entry is provided)
-    2. <child id="..."/> elements in XHTML (new format)
-    3. Legacy <ref>id</ref> elements in XHTML (legacy format)
+    2. <reference id="..."/> elements in XHTML (current format)
+    3. Legacy <child id="..."/> elements in XHTML
+    4. Legacy <ref>id</ref> elements in XHTML
 
     Each reference points to an existing trust entry by ID.
     """
@@ -930,11 +940,17 @@ def parse_operator_block(content: str, entry: dict | None = None) -> dict | None
 
             # Fallback to XHTML format if no args from entry
             if not refs:
-                # New format: <child id="..."/>
-                for child_el in el.findall("child"):
-                    ref_id = (child_el.get("id") or "").strip()
+                # Current format: <reference id="..."/>
+                for ref_el in el.findall("reference"):
+                    ref_id = (ref_el.get("id") or "").strip()
                     if ref_id:
                         refs.append(ref_id)
+                # Legacy fallback: <child id="..."/>
+                if not refs:
+                    for child_el in el.findall("child"):
+                        ref_id = (child_el.get("id") or "").strip()
+                        if ref_id:
+                            refs.append(ref_id)
                 # Legacy fallback: <ref>id</ref>
                 if not refs:
                     for ref_el in el.findall("ref"):
@@ -1320,7 +1336,7 @@ def resolve_reference(entry: dict) -> dict:
     if ref_el is None:
         return entry
 
-    href = ref_el.get("href", "")
+    href = ref_el.get("src", "") or ref_el.get("href", "")
     if not href:
         link_el = ref_el.find(".//a")
         if link_el is not None:
@@ -1441,7 +1457,7 @@ def resolve_entries(
     result = []
     for entry in entries:
         content = entry.get("content", "")
-        if "<reference" in content and "<fact" not in content:
+        if "<reference" in content and "<fact" not in content and not _has_operator_tag(content):
             result.append(resolve_reference(entry))
         elif "<authority" in content:
             result.extend(resolve_authority(
@@ -1526,6 +1542,9 @@ def _is_server_storable(entry: dict) -> bool:
     authorities must be resolved before reaching the merge pipeline.
     """
     content = entry.get("content", "")
+    # Operators are storable even though they may contain <reference id="..."/> children
+    if _has_operator_tag(content):
+        return True
     for tag in ("feeling", "provider", "reference", "authority"):
         if f"<{tag}" in content:
             return False

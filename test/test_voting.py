@@ -1015,7 +1015,7 @@ class TestFeelingTruthType(unittest.TestCase):
         """Feelings should pass through static_truth just like facts."""
         entries = [
             {"id": "feel", "content": '<feeling>A hunch.</feeling>'},
-            {"id": "op1", "content": '<and><child id="a"/><child id="b"/></and>'},
+            {"id": "op1", "content": '<and><reference id="a"/><reference id="b"/></and>'},
             {"id": "auth1", "content": '<authority url="http://x"/>'},
         ]
         result = static_truth(entries)

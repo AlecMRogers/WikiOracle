@@ -138,7 +138,7 @@ class TestBuildProviderBundle(unittest.TestCase):
             {"title": "LLM Provider", "trust": 0.95, "id": "t2",
              "content": "<provider><api_url>https://api.openai.com</api_url></provider>"},
             {"title": "Op", "trust": 0.8, "id": "t3",
-             "content": '<and><child id="t1"/></and>'},
+             "content": '<and><reference id="t1"/></and>'},
         ]
         state = _make_state(truth=trust)
         bundle = build_query(state, "q", {"chat": {"rag": True}})
@@ -198,7 +198,7 @@ class TestStaticTruth(unittest.TestCase):
         entries = [
             _make_trust_entry("Fact", 0.9, "plain", "e1"),
             {"title": "Op", "trust": 0.95, "id": "e2",
-             "content": '<and><child id="e1"/><child id="e1"/></and>'},
+             "content": '<and><reference id="e1"/><reference id="e1"/></and>'},
         ]
         st = static_truth(entries)
         self.assertEqual(len(st), 1)

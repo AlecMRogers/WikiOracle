@@ -51,7 +51,7 @@ def _provider(id, trust, title="prov"):
 
 def _reference(id, trust, title="ref"):
     return {"type": "truth", "id": id, "trust": trust, "title": title,
-            "content": f'<reference href="http://test">{title}</reference>',
+            "content": f'<reference src="http://test">{title}</reference>',
             "time": "2025-01-01T00:00:00Z"}
 
 
@@ -257,7 +257,7 @@ class TestIsServerStorable(unittest.TestCase):
     def test_operator_is_storable(self):
         """Operators (and, or, not, non) are storable."""
         entry = {"id": "op1", "trust": 0.5,
-                 "content": '<and><child id="a"/><child id="b"/></and>',
+                 "content": '<and><reference id="a"/><reference id="b"/></and>',
                  "time": "2025-01-01T00:00:00Z"}
         assert _is_server_storable(entry) is True
 
@@ -387,7 +387,7 @@ class TestValidateOperatorOperands(unittest.TestCase):
             _fact("a", 0.8),
             _fact("b", 0.6),
             {"id": "op1", "trust": 0.7,
-             "content": '<and><child id="a"/><child id="b"/></and>',
+             "content": '<and><reference id="a"/><reference id="b"/></and>',
              "time": "2025-01-01T00:00:00Z"},
         ]
         result = validate_operator_operands(entries)
@@ -402,7 +402,7 @@ class TestValidateOperatorOperands(unittest.TestCase):
             _fact("a", 0.8),
             _feeling("f1", 0.5),
             {"id": "op1", "trust": 0.7,
-             "content": '<and><child id="a"/><child id="f1"/></and>',
+             "content": '<and><reference id="a"/><reference id="f1"/></and>',
              "time": "2025-01-01T00:00:00Z"},
         ]
         result = validate_operator_operands(entries)

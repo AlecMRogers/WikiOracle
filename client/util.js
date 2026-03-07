@@ -734,15 +734,15 @@ function _openTruthEditor() {
         case "fact":
           return '<fact id="' + id + '" DoT="0.9" title="Assertion title">Assertion text here.</fact>';
         case "reference":
-          return '<reference id="' + id + '" DoT="0.8" title="Source title">\n  <a href="https://example.com">Link text</a>\n</reference>';
+          return '<reference id="' + id + '" DoT="0.8" src="https://example.com" title="Source title">Link text</reference>';
         case "and":
-          return '<and id="' + id + '" DoT="1">\n  <child id="' + c1 + '"/>\n  <child id="' + c2 + '"/>\n</and>';
+          return '<and id="' + id + '" DoT="1">\n  <reference id="' + c1 + '"/>\n  <reference id="' + c2 + '"/>\n</and>';
         case "or":
-          return '<or id="' + id + '" DoT="1">\n  <child id="' + c1 + '"/>\n  <child id="' + c2 + '"/>\n</or>';
+          return '<or id="' + id + '" DoT="1">\n  <reference id="' + c1 + '"/>\n  <reference id="' + c2 + '"/>\n</or>';
         case "not":
-          return '<not id="' + id + '" DoT="1">\n  <child id="' + c1 + '"/>\n</not>';
+          return '<not id="' + id + '" DoT="1">\n  <reference id="' + c1 + '"/>\n</not>';
         case "non":
-          return '<non id="' + id + '" DoT="1">\n  <child id="' + c1 + '"/>\n</non>';
+          return '<non id="' + id + '" DoT="1">\n  <reference id="' + c1 + '"/>\n</non>';
         case "provider":
           return '<provider id="' + id + '" DoT="0.7" title="LLM provider">\n  <api_url>https://api.example.com/v1</api_url>\n  <model>model-name</model>\n  <max_tokens>4096</max_tokens>\n</provider>';
         case "authority":
@@ -912,17 +912,25 @@ function _parseOperatorContent(content) {
       var el = doc.querySelector(operators[oi]);
       if (el) {
         var refs = [];
-        // New format: <child id="..."/>
-        var childEls = el.querySelectorAll("child");
-        for (var ci = 0; ci < childEls.length; ci++) {
-          var cid = (childEls[ci].getAttribute("id") || "").trim();
+        // Current format: <reference id="..."/>
+        var refEls = el.querySelectorAll("reference");
+        for (var ci = 0; ci < refEls.length; ci++) {
+          var cid = (refEls[ci].getAttribute("id") || "").trim();
           if (cid) refs.push(cid);
+        }
+        // Legacy fallback: <child id="..."/>
+        if (refs.length === 0) {
+          var childEls = el.querySelectorAll("child");
+          for (var ci2 = 0; ci2 < childEls.length; ci2++) {
+            var cid2 = (childEls[ci2].getAttribute("id") || "").trim();
+            if (cid2) refs.push(cid2);
+          }
         }
         // Legacy fallback: <ref>text</ref>
         if (refs.length === 0) {
-          var refEls = el.querySelectorAll("ref");
-          for (var ri = 0; ri < refEls.length; ri++) {
-            var txt = refEls[ri].textContent.trim();
+          var legacyRefEls = el.querySelectorAll("ref");
+          for (var ri = 0; ri < legacyRefEls.length; ri++) {
+            var txt = legacyRefEls[ri].textContent.trim();
             if (txt) refs.push(txt);
           }
         }
@@ -937,9 +945,9 @@ function _parseRefContent(content) {
   try {
     var parser = new DOMParser();
     var doc = parser.parseFromString("<root>" + content + "</root>", "text/xml");
-    // New format: <reference href="...">text</reference>
+    // Current format: <reference src="...">text</reference>
     var ref = doc.querySelector("reference");
-    if (ref) return { url: ref.getAttribute("href") || "", text: ref.textContent.trim() };
+    if (ref) return { url: ref.getAttribute("src") || ref.getAttribute("href") || "", text: ref.textContent.trim() };
     // Legacy fallback: <a href="...">text</a>
     var a = doc.querySelector("a");
     if (a) return { url: a.getAttribute("href") || "", text: a.textContent.trim() };
