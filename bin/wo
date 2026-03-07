@@ -35,9 +35,7 @@ import requests
 from state import (
     atomic_write_xml,
     ensure_minimal_state,
-    jsonl_to_state,
     load_state_file,
-    state_to_jsonl,
     utc_now_iso,
 )
 
@@ -224,11 +222,7 @@ def _run_stateful(args: argparse.Namespace) -> int:
     state["time"] = now
     state["selected_conversation"] = conv_id
 
-    if path.suffix.lower() == ".xml":
-        atomic_write_xml(path, state)
-    else:
-        from state import atomic_write_jsonl
-        atomic_write_jsonl(path, state)
+    atomic_write_xml(path, state)
     return 0
 
 
@@ -286,11 +280,7 @@ def _run_stateless(args: argparse.Namespace) -> int:
     returned_state = data.get("state")
     if isinstance(returned_state, dict):
         returned_state = ensure_minimal_state(returned_state, strict=False)
-        if path.suffix.lower() == ".xml":
-            atomic_write_xml(path, returned_state)
-        else:
-            from state import atomic_write_jsonl
-            atomic_write_jsonl(path, returned_state)
+        atomic_write_xml(path, returned_state)
     else:
         print("Warning: server did not return state", file=sys.stderr)
 

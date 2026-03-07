@@ -442,6 +442,7 @@ function _toggleContextEditor() {
   if (!overlay) {
     const body = `
         <p>Injected into every LLM call as background information.</p>
+        <p class="context-default">Always prepended: &ldquo;Return strictly valid XHTML: no Markdown, close all tags, escape entities, one root element.&rdquo;</p>
         <textarea id="contextTextarea" placeholder="Describe the project, key facts, instructions..."></textarea>
         <div class="settings-actions">
           <button class="btn" id="ctxReset">Reset</button>
@@ -532,6 +533,12 @@ function openSettings() {
   const tempSlider = document.getElementById("setTemp");
   tempSlider.value = chat.temperature ?? 0.7;
   document.getElementById("setTempVal").textContent = tempSlider.value;
+  const mtSlider = document.getElementById("setMaxTokens");
+  mtSlider.value = chat.max_tokens ?? 128;
+  document.getElementById("setMaxTokensVal").textContent = mtSlider.value;
+  const toSlider = document.getElementById("setTimeout");
+  toSlider.value = chat.timeout ?? 120;
+  document.getElementById("setTimeoutVal").textContent = toSlider.value;
   document.getElementById("setRag").checked = chat.rag !== false;
   document.getElementById("setUrlFetch").checked = !!chat.url_fetch;
   document.getElementById("setConfirm").checked = !!chat.confirm_actions;
@@ -554,6 +561,8 @@ async function saveSettings() {
   config.chat = {
     ...(config.chat || {}),
     temperature: parseFloat(document.getElementById("setTemp").value),
+    max_tokens: parseInt(document.getElementById("setMaxTokens").value, 10),
+    timeout: parseInt(document.getElementById("setTimeout").value, 10),
     rag: document.getElementById("setRag").checked,
     url_fetch: document.getElementById("setUrlFetch").checked,
     confirm_actions: document.getElementById("setConfirm").checked,

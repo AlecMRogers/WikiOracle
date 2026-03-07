@@ -16,8 +16,8 @@
 // ─── Config global (owned here, used everywhere) ───
 let config = {
   user: { name: "User" },
-  chat: { temperature: 0.7, rag: true,
-          url_fetch: false, confirm_actions: false },
+  chat: { temperature: 0.7, max_tokens: 128, timeout: 120,
+          rag: true, url_fetch: false, confirm_actions: false },
   ui: { default_provider: "wikioracle", layout: "flat", theme: "system",
         splitter_pct: 0, swipe_nav_horizontal: true,
         swipe_nav_vertical: false },
@@ -71,6 +71,8 @@ function _normalizeConfig(cfg) {
   if (cfg.ui.swipe_nav_vertical === undefined) cfg.ui.swipe_nav_vertical = false;
   if (!cfg.chat) cfg.chat = {};
   if (cfg.chat.temperature === undefined) cfg.chat.temperature = 0.7;
+  if (cfg.chat.max_tokens === undefined) cfg.chat.max_tokens = 128;
+  if (cfg.chat.timeout === undefined) cfg.chat.timeout = 120;
   if (cfg.chat.rag === undefined) cfg.chat.rag = true;
   if (cfg.chat.url_fetch === undefined) cfg.chat.url_fetch = false;
   if (cfg.chat.confirm_actions === undefined) cfg.chat.confirm_actions = false;

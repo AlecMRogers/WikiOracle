@@ -837,9 +837,13 @@ function renderMessages() {
     ctxSection.appendChild(ctxH3);
     var ctxP = document.createElement("p");
     ctxP.className = "root-summary-context";
-    ctxP.textContent = (contextText && contextText !== "<div/>")
-      ? truncate(contextText, 200)
-      : "none";
+    var XHTML_DEFAULT = "Return strictly valid XHTML: no Markdown, close all tags, escape entities, one root element.";
+    if (contextText && contextText !== "<div/>") {
+      ctxP.textContent = truncate(contextText, 200);
+    } else {
+      ctxP.textContent = XHTML_DEFAULT;
+      ctxP.classList.add("root-summary-default");
+    }
     ctxSection.appendChild(ctxP);
     ctxSection.addEventListener("click", function() {
       if (typeof _toggleContextEditor === "function") _toggleContextEditor();
@@ -1412,6 +1416,12 @@ function bindEvents() {
   document.getElementById("btnSend").addEventListener("click", sendMessage);
   document.getElementById("setTemp").addEventListener("input", function() {
     document.getElementById("setTempVal").textContent = this.value;
+  });
+  document.getElementById("setMaxTokens").addEventListener("input", function() {
+    document.getElementById("setMaxTokensVal").textContent = this.value;
+  });
+  document.getElementById("setTimeout").addEventListener("input", function() {
+    document.getElementById("setTimeoutVal").textContent = this.value;
   });
   document.getElementById("setProvider").addEventListener("change", function() {
     _populateModelDropdown(this.value);

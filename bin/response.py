@@ -742,7 +742,8 @@ def _bundle_to_messages(bundle: ProviderBundle, provider: str) -> List[Dict[str,
 # ---------------------------------------------------------------------------
 # Provider call functions
 # ---------------------------------------------------------------------------
-def _call_nanochat(cfg: Config, messages: List[Dict], temperature: float) -> str:
+def _call_nanochat(cfg: Config, messages: List[Dict], temperature: float,
+                   max_tokens: int = 128, timeout: int = 120) -> str:
     """Call NanoChat /chat/completions (SSE streaming, buffered)."""
     url = PROVIDERS.get("wikioracle", {}).get("url") or (cfg.base_url + cfg.api_path)
     if DEBUG_MODE:
@@ -750,8 +751,8 @@ def _call_nanochat(cfg: Config, messages: List[Dict], temperature: float) -> str
         print(f"[DEBUG] NanoChat messages ({len(messages)}):")
         for i, m in enumerate(messages):
             print(f"  [{i}] {m['role']}: {m['content'][:200]}{'...' if len(m['content']) > 200 else ''}")
-    payload = {"messages": messages, "temperature": temperature, "max_tokens": 24}
-    provider_timeout = max(PROVIDERS.get("wikioracle", {}).get("timeout") or cfg.timeout_s, 15)
+    payload = {"messages": messages, "temperature": temperature, "max_tokens": max_tokens}
+    provider_timeout = max(PROVIDERS.get("wikioracle", {}).get("timeout") or timeout, 15)
     resp = requests.post(url, json=payload, headers={"Content-Type": "application/json"},
                          timeout=provider_timeout, stream=True)
     if resp.status_code >= 400:
@@ -1013,7 +1014,8 @@ def _call_gemini(bundle: ProviderBundle | None, temperature: float,
 def _call_provider(cfg: Config, bundle: ProviderBundle | None, temperature: float,
                     provider: str, client_api_key: str = "",
                     client_model: str = "",
-                    messages: List[Dict] | None = None) -> str:
+                    messages: List[Dict] | None = None,
+                    chat_settings: Dict | None = None) -> str:
     """Call a provider using a ProviderBundle (preferred) or legacy messages."""
     import config as config_mod
 
@@ -1021,7 +1023,10 @@ def _call_provider(cfg: Config, bundle: ProviderBundle | None, temperature: floa
         if DEBUG_MODE:
             print(f"[DEBUG] → _call_nanochat (127.0.0.1)")
         nano_msgs = to_nanochat_messages(bundle) if bundle else (messages or [])
-        return _call_nanochat(cfg, nano_msgs, temperature)
+        cs = chat_settings or {}
+        return _call_nanochat(cfg, nano_msgs, temperature,
+                              max_tokens=int(cs.get("max_tokens", 128)),
+                              timeout=int(cs.get("timeout", 120)))
     pcfg = PROVIDERS.get(provider)
     if not pcfg:
         return f"[Unknown provider: {provider}. Available: {', '.join(PROVIDERS.keys())}]"
@@ -1423,6 +1428,8 @@ def process_chat(
         query_config["chat"] = {}
     query_config["chat"].setdefault("rag", cfg_chat.get("rag", True))
     query_config["chat"].setdefault("url_fetch", cfg_chat.get("url_fetch", False))
+    query_config["chat"].setdefault("max_tokens", cfg_chat.get("max_tokens", 128))
+    query_config["chat"].setdefault("timeout", cfg_chat.get("timeout", 120))
 
     conversation_id = body.get("conversation_id")
     branch_from = body.get("branch_from")
@@ -1473,6 +1480,7 @@ def process_chat(
                                     conversation_id=context_conv_id)
         prelim_response = _call_provider(
             cfg, prelim_bundle, temperature, provider, client_api_key, client_model,
+            chat_settings=query_config.get("chat"),
         )
         if prelim_response.startswith("[Error"):
             prelim_response = None  # Fall back to single-shot if prelim fails
@@ -1517,7 +1525,8 @@ def process_chat(
             role = m.get("role", "?")
             content = m.get("content", "")
             print(f"  [{i}] {role}: {content[:200]}{'...' if len(content) > 200 else ''}")
-    response_text = _call_provider(cfg, bundle, temperature, provider, client_api_key, client_model)
+    response_text = _call_provider(cfg, bundle, temperature, provider, client_api_key, client_model,
+                                    chat_settings=query_config.get("chat"))
     if config_mod.DEBUG_MODE:
         print(f"[DEBUG] ← Response ({len(response_text)} chars): {response_text[:120]}...")
     llm_provider_name = PROVIDERS.get(provider, {}).get("name", provider)
