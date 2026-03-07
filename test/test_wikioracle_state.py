@@ -339,6 +339,22 @@ class TestConversationTree(unittest.TestCase):
         self.assertEqual(len(conv["messages"]), 3)
         self.assertEqual(conv["messages"][-1]["id"], "m_new")
 
+    def test_add_message_to_empty_placeholder_conversation_updates_title(self):
+        empty = _make_conv("c_empty", "", [], [])
+        tree = [empty]
+        new_msg = {
+            "id": "m_new",
+            "role": "user",
+            "username": "Alec",
+            "time": "2026-02-23T00:01:00Z",
+            "content": "<p>Fresh branch title</p>",
+        }
+        result = add_message_to_conversation(tree, "c_empty", new_msg)
+        self.assertTrue(result)
+        conv = find_conversation(tree, "c_empty")
+        self.assertEqual(conv["title"], "Fresh branch title")
+        self.assertEqual(len(conv["messages"]), 1)
+
     def test_add_message_not_found(self):
         result = add_message_to_conversation(self.tree, "c_missing", {})
         self.assertFalse(result)

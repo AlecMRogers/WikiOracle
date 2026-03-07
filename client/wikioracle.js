@@ -221,7 +221,7 @@ function _createEmptyChildConversation(parentId) {
 
   const newConv = {
     id: generateUUID(),
-    title: "New branch",
+    title: "",
     messages: [],
     children: [],
     parentId: parentId,
@@ -1025,7 +1025,7 @@ async function sendMessage() {
     // Append to existing conversation
     const conv = findConversation(state.conversations, conversationId);
     if (conv && userEntry) {
-      if (!conv.messages || conv.messages.length === 0) {
+      if ((!conv.messages || conv.messages.length === 0) && !String(conv.title || "").trim()) {
         conv.title = text.slice(0, 50);
       }
       conv.messages.push(userEntry);

@@ -53,7 +53,6 @@ DEFAULT_OUTPUT = ""  # Default output-format instruction when none is configured
 TRUTH_TAGS = ("fact", "feeling", "reference", "and", "or", "not", "non", "provider", "authority")
 _TRUTH_TAG_SET = frozenset(TRUTH_TAGS)
 _TRUTH_METADATA_ATTRS = frozenset({"id", "title", "DoT", "trust", "time", "place", "arg1", "arg2"})
-_PLACEHOLDER_CONVERSATION_TITLES = frozenset({"", "(untitled)", "(continue)", "New branch"})
 
 
 # ---------------------------------------------------------------------------
@@ -973,7 +972,7 @@ def add_message_to_conversation(conversations: list, conv_id: str, message: dict
     if (
         was_empty
         and normalized.get("role") == "user"
-        and str(conv.get("title", "")).strip() in _PLACEHOLDER_CONVERSATION_TITLES
+        and not str(conv.get("title", "")).strip()
     ):
         conv["title"] = _derive_conversation_title(messages)
     return True
