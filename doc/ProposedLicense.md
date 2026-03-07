@@ -1,4 +1,4 @@
-# ProposedLicense.md
+# Proposed License
 
 ## WikiOracle Licensing Architecture
 
@@ -8,7 +8,7 @@ commons, and enable responsible AI development.
 
 ------------------------------------------------------------------------
 
-# 1. Four-Layer Conceptual Model
+## 1. Four-Layer Conceptual Model
 
 WikiOracle separates artifacts into distinct licensing domains.
 
@@ -31,7 +31,7 @@ extending them for AI systems.
 
 ------------------------------------------------------------------------
 
-# 2. License Comparison Table
+## 2. License Comparison Table
 
   -------------------------------------------------------------------------
   License      Domain       Key Features            Typical Use
@@ -79,7 +79,7 @@ Properties:
 
 ------------------------------------------------------------------------
 
-# 3. Rationale for Layered Licensing
+## 3. Rationale for Layered Licensing
 
 ## Software (GPL-3.0)
 
@@ -107,7 +107,7 @@ patent protection.
 
 ------------------------------------------------------------------------
 
-# 4. Training Data Provenance Policy
+## 4. Training Data Provenance Policy
 
 AI systems increasingly require transparent documentation of training
 sources.
@@ -139,7 +139,7 @@ reproducibility.
 
 ------------------------------------------------------------------------
 
-# 5. AI-Generated Content Policy
+## 5. AI-Generated Content Policy
 
 AI-generated text occupies a hybrid authorship category.
 
@@ -168,7 +168,7 @@ This ensures transparency regarding machine involvement.
 
 ------------------------------------------------------------------------
 
-# 6. Summary
+## 6. Summary
 
 WikiOracle licensing stack:
 

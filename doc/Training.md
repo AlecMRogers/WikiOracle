@@ -25,7 +25,7 @@ The bipolar range encodes both true and false statements:
 - **DoT = −1**: the user's claims fully contradict the server — the
   exchange is false.  Train at full learning rate (learning what is
   *not* true is as valuable as learning what *is* true).
-- **DoT ≈ 0**: no shared entries, or perfect cancellation — nothing
+- **DoT $\approx$ 0**: no shared entries, or perfect cancellation — nothing
   to learn.  Skip training.
 
 Both poles (+1 and −1) train at full strength via |DoT|; only the zero
@@ -51,7 +51,7 @@ saddle points.  In our system:
   the collective memory of what is true and what is false.
 - Each **training step** is a state transition that pushes the model
   toward one of the attractors (truth or refutation).
-- The **zero crossing** (DoT ≈ 0) is the energy barrier between
+- The **zero crossing** (DoT $\approx$ 0) is the energy barrier between
   attractors — the point of maximum uncertainty where the system has
   insufficient signal to commit to either direction.
 
@@ -312,10 +312,10 @@ their respective perspectives.  This requires embedding perspective
 alongside truth value so that the truth table becomes a manifold
 rather than a flat list.
 
-In the current consensus model, a DoT ≈ 0 simply means "nothing to
+In the current consensus model, a DoT $\approx$ 0 simply means "nothing to
 learn" and the training step is skipped.  In a future **pluralistic**
-model — where the same claim can be true in context c₁ and false in
-context c₂ — a DoT of 0 may instead indicate that **user feedback is
+model — where the same claim can be true in context c_1 and false in
+context c_2 — a DoT of 0 may instead indicate that **user feedback is
 needed** to disambiguate which context applies before training should
 proceed.
 

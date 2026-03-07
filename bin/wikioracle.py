@@ -252,6 +252,21 @@ def create_app(cfg: Config, url_prefix: str = "") -> Flask:
                 log.exception("POST /state failed")
                 return jsonify({"ok": False, "error": "Failed to save state"}), 400
 
+    @app.route(url_prefix + "/new", methods=["POST"])
+    def new_session():
+        """Reset state to an empty session and persist to disk."""
+        import response as response_mod
+        try:
+            empty = ensure_minimal_state({})
+            if config_mod.STATELESS_MODE:
+                response_mod._MEMORY_STATE = empty
+            else:
+                _save_state(cfg, empty)
+            return jsonify({"ok": True})
+        except Exception as exc:
+            log.exception("POST /new failed")
+            return jsonify({"ok": False, "error": str(exc)}), 500
+
     @app.route(url_prefix + "/state_size", methods=["GET"])
     def state_size_endpoint():
         """Return the state file size in bytes (for progress bar)."""

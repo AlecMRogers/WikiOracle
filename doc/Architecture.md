@@ -5,8 +5,8 @@
 WikiOracle is a local-first Flask shim that sits between a browser UI and one or more upstream LLM providers. Conversations are stored as a hierarchical tree — each conversation is an ordered list of messages that may branch into child conversations.
 
 ```
-Browser  ──HTTP──▸  wikioracle.py  ──HTTP──▸  Upstream LLM
-                        │
+Browser  --HTTP-->  wikioracle.py  --HTTP-->  Upstream LLM
+                        |
                     state.xml
                    (persistent state)
 ```
@@ -124,7 +124,7 @@ In the tree: `Dialogue → Conversation*`, `Conversation → Message* + Conversa
 | GET | `/` | Serve `client/index.html` |
 | GET | `/<file>` | Serve static assets from `client/` |
 
-### Data flow: client ↔ server
+### Data flow: client <-> server
 
 Truth, context, and output are **client-owned**. They flow client → server only; the server never sends them back in a chat response.
 
@@ -204,9 +204,9 @@ The display layer covers HTML structure, CSS classes, D3 node shapes, optimistic
 When a message is sent, the server needs to provide conversational context to the upstream model. The function `get_context_messages(conversations, conv_id)` walks the **ancestor chain** from the active conversation up to the root, collecting all messages in chronological order.
 
 ```
-Root conversation      →  messages: [m1, m2, m3]
-  └── Child conv       →  messages: [m4, m5]
-        └── Grandchild →  messages: [m6, m7]  ← active
+Root conversation      ->  messages: [m1, m2, m3]
+  |- Child conv        ->  messages: [m4, m5]
+     `- Grandchild     ->  messages: [m6, m7]  <- active
 
 Context sent to LLM: [m1, m2, m3, m4, m5, m6, m7]
 ```

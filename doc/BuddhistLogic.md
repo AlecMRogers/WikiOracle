@@ -1,5 +1,5 @@
 
-# BuddhistLogic.md
+# Buddhist Logic
 
 ## Purpose
 
@@ -19,7 +19,7 @@ interpreted using **Kleene logic** and **non-affirming negation**.
 
 ---
 
-# Valid Cognition in Dharmakīrti
+## Valid Cognition in Dharmakīrti
 
 In Dharmakīrti’s system there are **two primary pramāṇas**:
 
@@ -35,7 +35,7 @@ A valid cognition produces **true conceptual knowledge** (*pramā*).
 
 ---
 
-# Mapping to WikiOracle Truth Objects
+## Mapping to WikiOracle Truth Objects
 
 WikiOracle expresses the same epistemic structure through five truth types.
 
@@ -57,7 +57,7 @@ is determined only by operators and evidence.
 
 ---
 
-# Frame-Relative Truth
+## Frame-Relative Truth
 
 WikiOracle evaluates facts relative to **epistemic frames** defined by
 authorities and priors.
@@ -80,7 +80,7 @@ truth is **frame-indexed**.
 
 ---
 
-# Tetralemma Interpretation
+## Tetralemma Interpretation
 
 Buddhist logic frequently uses the **catuṣkoṭi (tetralemma)**:
 
@@ -95,7 +95,7 @@ The “both” case represents **frame disagreement**, not logical contradiction
 
 ---
 
-# Kleene Logic and Epistemic States
+## Kleene Logic and Epistemic States
 
 Within a single frame WikiOracle uses a three-valued epistemic logic
 similar to **Kleene logic**.
@@ -111,7 +111,7 @@ the fourth tetralemma state (“both”) emerges naturally.
 
 ---
 
-# Non-Affirming Negation
+## Non-Affirming Negation
 
 Buddhist logic distinguishes two types of negation:
 
@@ -136,7 +136,7 @@ This produces **epistemic openness** rather than contradiction. Dharmakīrti hol
 
 ---
 
-# Truth Lattice
+## Truth Lattice
 
 Combining frames and epistemic states yields the following structure:
 
@@ -162,7 +162,7 @@ This preserves the tetralemma without logical explosion.
 
 ---
 
-# Summary
+## Summary
 
 WikiOracle’s ontology forms a computational analogue of Buddhist epistemology.
 

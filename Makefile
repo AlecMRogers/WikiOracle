@@ -4,6 +4,8 @@
 
 SHELL := /bin/bash
 
+include /bits/projects/Make.mk
+
 # --- Configuration -----------------------------------------------------------
 
 NANOCHAT_DIR     := nanochat
@@ -93,14 +95,9 @@ DEPLOY_ARGS := --wo-key-file=$(WO_KEY_FILE) --wo-user=$(WO_USER) \
         openclaw_setup openclaw_run \
         doc_pdf
 
-# --- PDF generation options ---------------------------------------------------
-PDOPTS := --pdf-engine=xelatex \
-          -V geometry:margin=1in \
-          -V pagestyle=empty \
-          -V header-includes="\usepackage{unicode-math} \hyphenpenalty=10000 \exhyphenpenalty=10000 \makeatletter \renewcommand\section{\@startsection{section}{1}{\z@}{-3.5ex}{2.3ex}{\normalfont\Large\bfseries\centering}} \makeatother"
-
 # Ordered list of doc chapters for PDF generation
-PDF_CHAPTERS := doc/README.md \
+PDF_CHAPTERS := README.md \
+				doc/README.md \
                 doc/Constitution.md \
                 doc/WhatIsTruth.md \
                 doc/HierarchicalMixtureOfExperts.md \
@@ -628,7 +625,8 @@ build_preprocess:
 doc_pdf:
 	@echo "Generating PDF from doc/*.md → output/WikiOracle.pdf ..."
 	mkdir -p output
-	pandoc $(PDOPTS) \
+	pandoc $(PDFOPTS) \
+		--from=gfm \
 		--metadata title="WikiOracle Documentation" \
 		--toc --toc-depth=2 \
 		--resource-path=doc \

@@ -2,7 +2,7 @@
 
 The current HME fan-out is single-shot: beta providers receive the query but not the alpha's reasoning, and the alpha synthesises their responses into a final answer. The voting protocol extends this to a two-round exchange where the alpha's initial response steers the betas before the alpha makes its final evaluation.
 
-### Call sequence
+## Call sequence
 
 ```
 Q                       user query
@@ -13,23 +13,23 @@ R_alpha_final           alpha sees Q + R_alpha + R_beta_* — final synthesis
 
 The alpha's initial response (`R_alpha`) is appended to the conversation chain before it reaches the betas. Every beta with `prelim="true"` (the default) sees the same chain — `Q, R_alpha` — so the alpha's reasoning acts as a shared steering signal. A beta with `prelim="false"` answers cold, without seeing the alpha's preliminary response.
 
-### Topology
+## Topology
 
 The fan-out and fan-in form a diamond:
 
 ```
         Q
-        │
+        |
       R_alpha
       / | \
-R_beta₁ R_beta₂ … R_betaₙ
+R_beta_1 R_beta_2 ... R_beta_n
       \ | /
     R_alpha_final
 ```
 
 This is a directed acyclic graph (DAG), not a tree — the alpha node appears at both the top and bottom of the diamond. Because there may be many betas, the structure branches out and branches back in, making it technically a digraph.
 
-### Cycle prevention
+## Cycle prevention
 
 An alpha must not participate in any vote that exists as a consequence of a vote it initiated. This is stronger than "don't appear as a beta in your own vote" — it covers the entire downstream call tree. If A initiates a vote and one of its betas (B) triggers a nested vote, A must not appear as a beta in B's vote either, because B's vote only exists because A's vote caused it.
 
@@ -37,12 +37,12 @@ The contract: when a provider is asked to participate in a vote, it walks the ca
 
 ```
 A initiates vote
-├── B (beta) → B initiates nested vote
-│   ├── C (beta of B) — ok
-│   ├── A (beta of B) — A finds itself in ancestry → keeps quiet
-│   └── D (beta of B) — ok
-├── C (beta) — ok
-└── E (beta) — ok
+|- B (beta) -> B initiates nested vote
+|  |- C (beta of B) - ok
+|  |- A (beta of B) - A finds itself in ancestry -> keeps quiet
+|  `- D (beta of B) - ok
+|- C (beta) - ok
+`- E (beta) - ok
 ```
 
 Implementation: each vote carries a **call chain** — the ordered list of provider IDs that have acted as alpha from the root vote down to the current one. Before a provider responds as a beta, it checks whether its own ID appears anywhere in the call chain. If so, it stays silent. When a beta initiates its own nested vote, it appends its ID to the chain before calling its own betas.
@@ -55,7 +55,7 @@ The call chain grows monotonically and is threaded through every invocation, so 
 
 There is no "ultimate alpha" — any node may take the alpha role in a given vote. The cycle constraint is the only structural restriction.
 
-### Per-beta prelim control
+## Per-beta prelim control
 
 Each `<provider>` entry supports an optional `prelim` attribute (default `"true"`). When `prelim="true"`, the beta receives the alpha's preliminary response as a steering signal. When `prelim="false"`, the beta answers the query cold — it does not see `R_alpha` in its history.
 
@@ -69,7 +69,7 @@ Each `<provider>` entry supports an optional `prelim` attribute (default `"true"
 
 This gives the alpha author fine-grained control over which betas benefit from steering and which should form independent opinions.
 
-### All output is truth
+## All output is truth
 
 Voters are encouraged to express *only* truth statements in their responses. `<feeling>` is a truth type — it represents a subjective, non-verifiable claim. Prior output that has not been substantiated with evidence is treated as feeling: it carries no evidential weight and is not penalizable, but it is still a legitimate part of the truth surface.
 
@@ -81,7 +81,7 @@ The recognized truth types in a vote response are:
 
 ```xml
 <fact id="vote_01" trust="0.9" title="Socrates was mortal">
-  Socrates was mortal, derived from axiom_01 ∧ axiom_02.
+  Socrates was mortal, derived from axiom_01 and axiom_02.
 </fact>
 <feeling id="vote_02" trust="0.5" title="Intuition about relevance">
   The penguin example feels more pedagogically useful here.
@@ -90,7 +90,7 @@ The recognized truth types in a vote response are:
 
 These inline truth statements enrich the trust surface available to downstream consumers. A beta that has queried the alpha for steering can select which of its own trust entries are most relevant to the alpha's uncertainty gaps, and surface them explicitly. Unstructured prose in a response — text outside any truth tag — is treated as unsubstantiated feeling by default.
 
-### Relation to current architecture
+## Relation to current architecture
 
 The current `evaluate_providers()` in `response.py` implements the single-shot fan-out (Q → R_beta_* → R_alpha). The voting protocol extends this to:
 

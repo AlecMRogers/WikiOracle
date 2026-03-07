@@ -145,9 +145,9 @@ The conversation tree supports these operations (implemented in `bin/state.py`):
 When a message is sent, `get_context_messages()` walks the ancestor chain from the active conversation to the root, collecting all messages in order:
 
 ```
-Root conversation      →  messages: [m1, m2, m3]
-  └── Child conv       →  messages: [m4, m5]
-        └── Grandchild →  messages: [m6, m7]  ← active
+Root conversation      ->  messages: [m1, m2, m3]
+  |- Child conv        ->  messages: [m4, m5]
+     `- Grandchild     ->  messages: [m6, m7]  <- active
 
 Context sent to LLM: [m1, m2, m3, m4, m5, m6, m7]
 ```

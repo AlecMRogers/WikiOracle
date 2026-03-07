@@ -72,7 +72,7 @@ Rules:
 2. Extract operators via `parse_operator_block()`.
 3. Iterate (max 100 rounds):
    - For each operator entry, compute its certainty from its operands (and/or/not/non).
-   - If no values changed (within ε = 1e-9), stop (fixed point reached).
+   - If no values changed (within $\epsilon$ = 1e-9), stop (fixed point reached).
 4. Return the complete derived certainty table.
 
 Operators derive their **own** entry's certainty from their operands. They do not modify other entries. This is a side-effect-free model: an operator's certainty is always a deterministic function of its referenced operands.

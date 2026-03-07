@@ -153,14 +153,28 @@ function renderTree(hierarchyData, callbacks) {
   const g = zoomG.append("g")
     .attr("transform", `translate(${margin.left},${margin.top})`);
 
-  // Compute zoom-to-fit transform (used for initial view + double-click reset)
-  // contentW/H already include margins, so fit them into the full SVG area.
+  // Compute zoom-to-fit transform (used for double-click reset).
+  // For very large trees, fitScale can be microscopic — clamp to [0.05, 1].
   const fitScaleX = svgW / contentW;
   const fitScaleY = svgH / contentH;
-  const fitScale = Math.min(fitScaleX, fitScaleY, 1); // never zoom in beyond 1:1
+  const fitScale = Math.max(Math.min(fitScaleX, fitScaleY, 1), 0.05);
   const fitTx = (svgW - contentW * fitScale) / 2;
   const fitTy = (svgH - contentH * fitScale) / 2;
   const fitTransform = d3.zoomIdentity.translate(fitTx, fitTy).scale(fitScale);
+
+  // Compute a "center on focal node" transform for the initial view.
+  // When the tree is too large for zoom-to-fit to be readable (fitScale < 0.3),
+  // start centred on the selected node (or root) at a comfortable scale.
+  const readableScale = 0.5;
+  let initialTransform = fitTransform;
+  if (fitScale < 0.3) {
+    const focal = root.descendants().find(d => d.data.selected) || root;
+    const fx = margin.left + focal.x;
+    const fy = margin.top + focal.y;
+    const tx = svgW / 2 - fx * readableScale;
+    const ty = Math.min(svgH * 0.15, svgH / 2 - fy * readableScale);
+    initialTransform = d3.zoomIdentity.translate(tx, ty).scale(readableScale);
+  }
 
   // Stash for background-dblclick zoom toggle
   _fitTransform = fitTransform;
@@ -189,17 +203,17 @@ function renderTree(hierarchyData, callbacks) {
   // Restore zoom or pan to selected node (keyboard navigation)
   if (_focusOnSelected) {
     const selNode = root.descendants().find(d => d.data.selected);
-    const k = _savedTransform ? _savedTransform.k : fitScale;
+    const k = _savedTransform ? _savedTransform.k : readableScale;
     if (selNode) {
       const tx = svgW / 2 - (margin.left + selNode.x) * k;
       const ty = svgH / 2 - (margin.top + selNode.y) * k;
       svg.call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(k));
     } else {
-      svg.call(zoom.transform, _savedTransform || fitTransform);
+      svg.call(zoom.transform, _savedTransform || initialTransform);
     }
     _focusOnSelected = false;
   } else {
-    svg.call(zoom.transform, _savedTransform || fitTransform);
+    svg.call(zoom.transform, _savedTransform || initialTransform);
   }
 
   // Links — curved top-down

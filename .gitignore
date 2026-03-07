@@ -11,7 +11,9 @@ __pycache__/
 .DS_Store
 /llm.jsonl
 *.merged
-
 /conversations/*.json
 /conversations/*.jsonl
 /bin/__pycache__/
+.nano.pid
+.gitignore
+.wo.pid

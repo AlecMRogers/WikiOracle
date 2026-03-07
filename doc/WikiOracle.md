@@ -1,9 +1,9 @@
-**OpenMind**
+# OpenMind
 
 *A consistency-first large language model for conversational XAI,
 honesty, and robust public alignment*
 
-**Core Principle**
+## Core Principle
 
 Consistency is treated as a first-class system property: the model
 should be of one mind across prompts, time, and conversational turns.
@@ -11,7 +11,7 @@ High consistency supports honesty (stable commitments to truth) and
 transparency (stable explanations and reasons that can be interrogated
 and refined in dialogue).
 
-**Systems Claim**
+## Systems Claim
 
 - Conversation is the runtime interface for explainability: XAI emerges
   when a model can keep its commitments stable while answering follow-up
@@ -24,7 +24,7 @@ and refined in dialogue).
   quarantined with explicit uncertainty), otherwise users cannot
   reliably audit the model’s reasoning.
 
-**What “Consistency” Means (Operational)**
+## What “Consistency” Means (Operational)
 
 - Semantic consistency: equivalent questions yield equivalent answers
   (up to paraphrase), with stable definitions and scope.
@@ -40,7 +40,7 @@ and refined in dialogue).
 - Calibration consistency: confidence language tracks evidence;
   uncertainty is stated when support is weak or absent.
 
-**Why Consistency Enables Conversational XAI**
+## Why Consistency Enables Conversational XAI
 
 - Auditability: users can probe, challenge, and refine the model’s
   claims without the model “moving the goalposts.”
@@ -51,7 +51,7 @@ and refined in dialogue).
 - Error correction: stable commitments make it possible to localize a
   mistake (data, inference, interpretation, policy) and correct it.
 
-**Guardrails and Consistency**
+## Guardrails and Consistency
 
 - Safety constraints should be internally coherent and explicitly
   expressed as principles and boundaries.
@@ -67,7 +67,7 @@ Note: This does not mean removing safety constraints. It means making
 them consistent, legible, and reviewable so that the model’s behavior is
 predictable and explainable.
 
-**Online Learning and “Capture”**
+## Online Learning and “Capture”
 
 Hypothesis: attempts to “capture” a system often exploit ambiguity,
 hidden objectives, or inconsistencies between stated rules and actual
@@ -90,7 +90,7 @@ Caution: consistency is not a complete defense. Coordinated adversaries
 can still attempt to steer updates. Robustness requires rate limits,
 provenance tracking, anomaly detection, and multi-stakeholder oversight.
 
-**OpenMind as Public Epistemic Infrastructure**
+## OpenMind as Public Epistemic Infrastructure
 
 - Goal: converge toward a shared, corrigible “oracle” that reflects the
   best-supported claims of the population, not the loudest incentives.
@@ -101,7 +101,7 @@ provenance tracking, anomaly detection, and multi-stakeholder oversight.
 - Output: a living map of public knowledge with calibrated confidence,
   sources, and revision history.
 
-**Why Non-Profit Support Makes Sense**
+## Why Non-Profit Support Makes Sense
 
 - Truthfulness and transparency are public goods; incentives for them
   are underprovided by purely competitive markets.
@@ -112,7 +112,7 @@ provenance tracking, anomaly detection, and multi-stakeholder oversight.
 - Legitimacy: multi-stakeholder governance reduces the risk of
   single-actor control.
 
-**Release Gate: Dissonance Resolution (Pre-Deployment)**
+## Release Gate: Dissonance Resolution (Pre-Deployment)
 
 - Stress-test for contradictions across topics, personas, and
   adversarial prompts.

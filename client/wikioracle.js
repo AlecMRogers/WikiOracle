@@ -1080,12 +1080,16 @@ async function sendMessage() {
 
 // ─── Bind UI events ───
 function bindEvents() {
-  // New (clear all local data)
-  document.getElementById("btnNew").addEventListener("click", function() {
-    if (confirm("This will clear all local data (conversations, truth entries, config). This cannot be undone. Continue?")) {
-      _clearAllLocal();
-      window.location.reload();
+  // New (clear all local data; server writes empty state to disk)
+  document.getElementById("btnNew").addEventListener("click", async function() {
+    if (!confirm("This will clear all local data (conversations, truth entries, config). This cannot be undone. Continue?")) return;
+    try {
+      await api("POST", "/new");
+    } catch (e) {
+      console.error("[WikiOracle] Failed to reset server state:", e);
     }
+    _clearAllLocal();
+    window.location.reload();
   });
 
   // Export XML
@@ -1632,17 +1636,24 @@ async function init() {
     applyTheme(config.ui.theme);
     _updatePlaceholder();
 
-    // Restore splitter position from config (percentage of viewport)
+    // Restore splitter position from config (percentage of viewport).
+    // Guard: splitter_pct === 0 means the tree was fully collapsed in a
+    // previous session.  Restore to a usable default (30%) so the tree
+    // is always visible on load — the user can still collapse it manually.
     if (config.ui.splitter_pct != null) {
       const tree = document.getElementById("treeContainer");
       if (tree) {
-        const pct = config.ui.splitter_pct;
-        if (document.body.classList.contains("layout-vertical")) {
-          tree.style.width = pct === 0 ? "0px" : (pct / 100 * window.innerWidth) + "px";
-        } else {
-          tree.style.height = pct === 0 ? "0px" : (pct / 100 * window.innerHeight) + "px";
+        var pct = config.ui.splitter_pct;
+        if (pct <= 0) {
+          pct = 30;
+          config.ui.splitter_pct = pct;
         }
-        tree.classList.toggle("tree-collapsed", pct === 0);
+        if (document.body.classList.contains("layout-vertical")) {
+          tree.style.width = (pct / 100 * window.innerWidth) + "px";
+        } else {
+          tree.style.height = (pct / 100 * window.innerHeight) + "px";
+        }
+        tree.classList.remove("tree-collapsed");
       }
     }
 
