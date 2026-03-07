@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Integration test for the /train endpoint (online training via NanoChat).
 
-Starts a NanoChat server with the local d6 checkpoint, mounts the WikiOracle
+Starts a NanoChat server with a local checkpoint, mounts the WikiOracle
 /train route, sends a training step, and verifies the loss is returned.
 
 Requirements:
   - torch, fastapi, uvicorn (NanoChat's .venv-linux or equivalent)
-  - nanochat/chatsft_checkpoints/d6/ must exist (small CPU demo model)
+  - nanochat/chatsft_checkpoints/ must contain at least one model (e.g. d26)
 
 Skipped automatically if torch is not importable or checkpoint is missing.
 Run via:

@@ -750,7 +750,7 @@ def _call_nanochat(cfg: Config, messages: List[Dict], temperature: float) -> str
         print(f"[DEBUG] NanoChat messages ({len(messages)}):")
         for i, m in enumerate(messages):
             print(f"  [{i}] {m['role']}: {m['content'][:200]}{'...' if len(m['content']) > 200 else ''}")
-    payload = {"messages": messages, "temperature": temperature, "max_tokens": 1024}
+    payload = {"messages": messages, "temperature": temperature, "max_tokens": 24}
     provider_timeout = max(PROVIDERS.get("wikioracle", {}).get("timeout") or cfg.timeout_s, 15)
     resp = requests.post(url, json=payload, headers={"Content-Type": "application/json"},
                          timeout=provider_timeout, stream=True)
@@ -775,7 +775,8 @@ def _call_nanochat(cfg: Config, messages: List[Dict], temperature: float) -> str
             except json.JSONDecodeError:
                 continue
     except (requests.exceptions.ChunkedEncodingError,
-            requests.exceptions.ConnectionError) as exc:
+            requests.exceptions.ConnectionError,
+            requests.exceptions.ReadTimeout) as exc:
         return f"[Connection lost to NanoChat ({url}): {exc}]"
     if full_text:
         return "".join(full_text)
