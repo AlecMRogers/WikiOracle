@@ -723,17 +723,34 @@ function _openTruthEditor() {
     document.getElementById("truthClose").addEventListener("click", dlg.close);
 
     // ─── XHTML template for each subtype ───
-    var _truthTemplates = {
-      feeling: '<feeling title="My feeling">Subjective statement here.</feeling>',
-      fact: '<fact DoT="0.9" title="Assertion title">Assertion text here.</fact>',
-      reference: '<reference DoT="0.8" title="Source title">\n  <a href="https://example.com">Link text</a>\n</reference>',
-      and: '<and DoT="1" arg1="" arg2=""/>',
-      or: '<or DoT="1" arg1="" arg2=""/>',
-      not: '<not DoT="1" arg1=""/>',
-      non: '<non DoT="1" arg1=""/>',
-      provider: '<provider DoT="0.7" title="LLM provider">\n  <api_url>https://api.example.com/v1</api_url>\n  <model>model-name</model>\n  <max_tokens>4096</max_tokens>\n</provider>',
-      authority: '<authority DoT="0.8" title="Remote knowledge base">\n  <url>https://example.com/kb.xml</url>\n  <refresh>3600</refresh>\n</authority>'
-    };
+    function _truthTemplate(subtype) {
+      var id = generateUUID();
+      var entries = Array.isArray(state.truth) ? state.truth : [];
+      var c1 = entries.length > 0 ? entries[0].id : "entry-id-here";
+      var c2 = entries.length > 1 ? entries[1].id : "entry-id-here";
+      switch (subtype) {
+        case "feeling":
+          return '<feeling id="' + id + '" title="My feeling">Subjective statement here.</feeling>';
+        case "fact":
+          return '<fact id="' + id + '" DoT="0.9" title="Assertion title">Assertion text here.</fact>';
+        case "reference":
+          return '<reference id="' + id + '" DoT="0.8" title="Source title">\n  <a href="https://example.com">Link text</a>\n</reference>';
+        case "and":
+          return '<and id="' + id + '" DoT="1">\n  <child id="' + c1 + '"/>\n  <child id="' + c2 + '"/>\n</and>';
+        case "or":
+          return '<or id="' + id + '" DoT="1">\n  <child id="' + c1 + '"/>\n  <child id="' + c2 + '"/>\n</or>';
+        case "not":
+          return '<not id="' + id + '" DoT="1">\n  <child id="' + c1 + '"/>\n</not>';
+        case "non":
+          return '<non id="' + id + '" DoT="1">\n  <child id="' + c1 + '"/>\n</non>';
+        case "provider":
+          return '<provider id="' + id + '" DoT="0.7" title="LLM provider">\n  <api_url>https://api.example.com/v1</api_url>\n  <model>model-name</model>\n  <max_tokens>4096</max_tokens>\n</provider>';
+        case "authority":
+          return '<authority id="' + id + '" DoT="0.8" title="Remote knowledge base">\n  <url>https://example.com/kb.xml</url>\n  <refresh>3600</refresh>\n</authority>';
+        default:
+          return '<fact id="' + id + '" DoT="0.9" title="Assertion title">Assertion text here.</fact>';
+      }
+    }
 
     // Brief description shown above the editor for each truth type
     var _truthDescriptions = {
@@ -755,7 +772,7 @@ function _openTruthEditor() {
     document.getElementById("truthAdd").addEventListener("click", function() {
       _truthEditing = "new";
       var subtype = document.getElementById("truthAddType").value;
-      var tmpl = _truthTemplates[subtype] || _truthTemplates.fact;
+      var tmpl = _truthTemplate(subtype);
       document.getElementById("truthContent").value = tmpl;
       document.getElementById("truthEditError").textContent = "";
       _setTruthEditLabel(subtype);
