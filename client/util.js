@@ -724,15 +724,15 @@ function _openTruthEditor() {
 
     // ─── XHTML template for each subtype ───
     var _truthTemplates = {
-      feeling: '<feeling>Subjective statement here.</feeling>',
-      fact: '<fact>Assertion text here.</fact>',
-      reference: '<reference href="https://example.com">Link text</reference>',
-      and: '<and/>',
-      or: '<or/>',
-      not: '<not/>',
-      non: '<non/>',
-      provider: '<provider api_url="https://api.example.com" model="model_name"/>',
-      authority: '<authority url="https://example.com/kb.xml"/>'
+      feeling: '<feeling title="My feeling">Subjective statement here.</feeling>',
+      fact: '<fact DoT="0.9" title="Assertion title">Assertion text here.</fact>',
+      reference: '<reference DoT="0.8" title="Source title">\n  <a href="https://example.com">Link text</a>\n</reference>',
+      and: '<and DoT="1" arg1="" arg2=""/>',
+      or: '<or DoT="1" arg1="" arg2=""/>',
+      not: '<not DoT="1" arg1=""/>',
+      non: '<non DoT="1" arg1=""/>',
+      provider: '<provider DoT="0.7" title="LLM provider">\n  <api_url>https://api.example.com/v1</api_url>\n  <model>model-name</model>\n  <max_tokens>4096</max_tokens>\n</provider>',
+      authority: '<authority DoT="0.8" title="Remote knowledge base">\n  <url>https://example.com/kb.xml</url>\n  <refresh>3600</refresh>\n</authority>'
     };
 
     // Brief description shown above the editor for each truth type
@@ -840,7 +840,7 @@ function _parseXhtmlContent(content) {
     for (var i = 0; i < recognized.length; i++) {
       var el = root.querySelector(recognized[i]);
       if (el) {
-        var c = parseFloat(el.getAttribute("trust"));
+        var c = parseFloat(el.getAttribute("DoT") || el.getAttribute("trust"));
         return {
           tag: recognized[i],
           id: el.getAttribute("id") || "",
